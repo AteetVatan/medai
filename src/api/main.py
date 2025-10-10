@@ -18,6 +18,7 @@ import uvicorn
 
 from ..agents.clinical_intake_agent import clinical_intake_agent, ClinicalIntakeResult
 from ..services.storage_service import storage_service
+from ..app.routers.reports import router as reports_router
 from ..utils.config import settings
 from ..utils.logging import get_logger, get_compliance_logger, RequestContext
 from ..utils.cache import get_cache_stats
@@ -86,6 +87,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+app.include_router(reports_router)
 
 # Add middleware
 app.add_middleware(
