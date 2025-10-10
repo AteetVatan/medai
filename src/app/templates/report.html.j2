@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Behandlungsbericht</title>
+    <style>
+        body { font-family: "Helvetica", "Arial", sans-serif; margin: 30px; color: #222; }
+        h1 { text-align: center; margin-bottom: 20px; }
+        .section { margin-bottom: 18px; }
+        .section h2 { font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 4px; margin-bottom: 8px; }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; }
+        .label { font-weight: bold; }
+        ul { margin: 0; padding-left: 18px; }
+        .footer { margin-top: 30px; display: flex; justify-content: space-between; }
+        .signature { margin-top: 50px; border-top: 1px solid #555; padding-top: 6px; width: 200px; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Behandlungsbericht</h1>
+    <div class="section grid">
+        <div><span class="label">Arzt:</span> {{ report.doctor_name }}</div>
+        <div><span class="label">Datum:</span> {{ report.report_date.strftime('%d.%m.%Y') }}</div>
+        <div><span class="label">Ort:</span> {{ report.report_city }}</div>
+        <div><span class="label">Patient:</span> {{ report.patient_name }}</div>
+        <div><span class="label">Geburtsdatum:</span> {{ report.patient_dob }}</div>
+        <div><span class="label">Versicherung:</span> {{ report.insurance_type.value }}</div>
+        <div><span class="label">Verordnung vom:</span> {{ report.prescription_date }}</div>
+        <div><span class="label">Behandlungszeitraum:</span> {{ report.treatment_date_from }} bis {{ report.treatment_date_to }}</div>
+        <div><span class="label">Therapeut:</span> {{ report.physiotherapist_name }}</div>
+    </div>
+
+    <div class="section">
+        <h2>Diagnosen</h2>
+        {% if report.diagnoses %}
+        <ul>
+            {% for item in report.diagnoses %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>-</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>Verordnete Therapie</h2>
+        <p>{{ report.prescribed_therapy_type or '-' }}</p>
+    </div>
+
+    <div class="section">
+        <h2>Problemformulierung</h2>
+        <p>{{ report.patient_problem_statement or '-' }}</p>
+    </div>
+
+    <div class="section">
+        <h2>Therapie-Verlauf</h2>
+        <p><span class="label">Ergebnis:</span> {{ report.treatment_outcome.value }}</p>
+        <p><span class="label">Status:</span> {{ report.therapy_status_note or '-' }}</p>
+    </div>
+
+    <div class="section">
+        <h2>Empfehlung</h2>
+        <p>{{ report.follow_up_recommendation or '-' }}</p>
+    </div>
+
+    {% if report.transcript %}
+    <div class="section">
+        <h2>Transkript (Auszug)</h2>
+        <p>{{ report.transcript }}</p>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <div>{{ report.report_city }}, {{ report.report_date.strftime('%d.%m.%Y') }}</div>
+        <div class="signature">{{ report.physiotherapist_name }}</div>
+    </div>
+</body>
+</html>

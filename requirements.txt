@@ -34,3 +34,5 @@ black==24.10.0
 flake8==7.1.1
 mypy==1.13.0
 gunicorn==23.0.0
+reportlab==4.0.7
+

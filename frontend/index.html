@@ -61,6 +61,10 @@
             transform: translateY(-5px);
         }
 
+        .hidden {
+            display: none !important;
+        }
+
         .card h2 {
             color: #4a5568;
             margin-bottom: 20px;
@@ -287,6 +291,47 @@
             font-size: 1rem;
         }
 
+        .report-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .report-form--inactive {
+            opacity: 0.6;
+        }
+
+        .report-section {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            background: #fdfdfd;
+        }
+
+        .report-section legend {
+            font-weight: 600;
+            color: #4a5568;
+            padding: 0 6px;
+        }
+
+        .report-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px 16px;
+        }
+
+        .report-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .report-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
         .form-control:focus {
             outline: none;
             border-color: #007bff;
@@ -394,6 +439,7 @@
                         <option value="intake_summary">Physiotherapeutische Aufnahme</option>
                         <option value="assessment">Physiotherapeutische Bewertung</option>
                         <option value="treatment_plan">Physiotherapeutischer Behandlungsplan</option>
+                        <option value="treatment_report">Behandlungsbericht</option>
                     </select>
                 </div>
 
@@ -444,10 +490,10 @@
             </div>
 
             <!-- Results Card -->
-            <div class="card">
+            <div id="resultsCard" class="card">
                 <h2> Ergebnisse</h2>
 
-                <div id="transcriptContainer" class="transcript-container">
+                <div class="transcript-container">
                     <div id="transcriptText" class="transcript-text">
                         Transkription wird hier angezeigt...
                     </div>
@@ -466,9 +512,113 @@
                 </div>
 
                 <div class="controls">
-                    <button id="saveButton" class="btn btn-success" disabled>Speichern</button>
-                    <button id="downloadButton" class="btn btn-primary" disabled>Download</button>
+                    <button id="resultsSaveButton" class="btn btn-success" disabled>Speichern</button>
+                    <button id="resultsDownloadButton" class="btn btn-primary" disabled>Download</button>
                 </div>
+            </div>
+
+            <!-- Report Card -->
+            <div id="reportCard" class="card hidden">
+                <h2> Behandlungsbericht</h2>
+
+                <div class="transcript-container">
+                    <div id="reportTranscriptText" class="transcript-text">
+                        Transkription wird hier angezeigt...
+                    </div>
+                </div>
+
+                <form id="reportForm" class="report-form">
+                    <fieldset class="report-section" disabled>
+                        <legend>Vorgaben</legend>
+                        <div class="report-grid">
+                            <div class="form-group">
+                                <label for="doctorName">Behandelnder Arzt</label>
+                                <input id="doctorName" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="patientName">Patient</label>
+                                <input id="patientName" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="patientDob">Geburtsdatum</label>
+                                <input id="patientDob" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="prescriptionDate">Verordnung vom</label>
+                                <input id="prescriptionDate" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="treatmentDateFrom">Behandlungsbeginn</label>
+                                <input id="treatmentDateFrom" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="treatmentDateTo">Behandlungsende</label>
+                                <input id="treatmentDateTo" class="form-control" type="text" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="physiotherapistName">Therapeut</label>
+                                <input id="physiotherapistName" class="form-control" type="text" readonly>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="report-section">
+                        <legend>Berichtsinhalte</legend>
+                        <div class="report-grid">
+                            <div class="form-group">
+                                <label for="reportCity">Ort</label>
+                                <input id="reportCity" class="form-control" type="text" placeholder="z.B. Essen">
+                            </div>
+                            <div class="form-group">
+                                <label for="reportDate">Berichtsdatum</label>
+                                <input id="reportDate" class="form-control" type="date">
+                            </div>
+                            <div class="form-group">
+                                <label for="insuranceType">Versicherungsart</label>
+                                <select id="insuranceType" class="form-control">
+                                    <option value="PRIVAT">Privat</option>
+                                    <option value="GESETZLICH">Gesetzlich</option>
+                                    <option value="UNKLAR">Unklar</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="treatmentOutcome">Behandlungsergebnis</label>
+                                <select id="treatmentOutcome" class="form-control">
+                                    <option value="BESCHWERDEFREI">Beschwerdefrei</option>
+                                    <option value="LINDERUNG">Linderung</option>
+                                    <option value="KEINE_BESSERUNG">Keine Besserung</option>
+                                    <option value="UNKLAR">Unklar</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="diagnoses">Diagnosen</label>
+                            <textarea id="diagnoses" class="form-control report-textarea" placeholder="Jede Diagnose in neuer Zeile"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="therapyType">Verordnete Therapie</label>
+                            <input id="therapyType" class="form-control" type="text" placeholder="z.B. KG Erwachsene ZNS">
+                        </div>
+                        <div class="form-group">
+                            <label for="problemStatement">Problemformulierung</label>
+                            <textarea id="problemStatement" class="form-control report-textarea"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="therapyStatus">Therapiestatus</label>
+                            <textarea id="therapyStatus" class="form-control report-textarea"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="followUp">Weiterbehandlung</label>
+                            <textarea id="followUp" class="form-control report-textarea"></textarea>
+                        </div>
+                    </fieldset>
+
+                    <div class="report-actions">
+                        <button id="reportSuggestButton" type="button" class="btn btn-secondary" disabled>Aus Transkript ausfüllen</button>
+                        <button id="reportSaveButton" type="button" class="btn btn-success" disabled>Speichern</button>
+                        <button id="reportDownloadButton" type="button" class="btn btn-primary" disabled>PDF herunterladen</button>
+                    </div>
+                </form>
             </div>
         </div>
 
