@@ -12,7 +12,7 @@ PORT="8000"
 echo "🏗️  Building medAI MVP Docker image..."
 
 # Build the Docker image
-docker build -t $IMAGE_NAME .
+docker build -t $IMAGE_NAME -f Dockerfile .
 
 echo "✅ Docker image built successfully!"
 

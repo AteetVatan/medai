@@ -20,8 +20,12 @@ docker-build.bat
 
 1. **Build the Docker image:**
 ```bash
-docker build -t medai-mvp .
+docker build -t medai-mvp -f Dockerfile .
 ```
+
+**Alternative Dockerfiles:**
+- `Dockerfile.minimal` - Minimal dependencies for faster builds
+- `Dockerfile.alternative` - Alternative package management approach
 
 2. **Run the container:**
 ```bash
@@ -94,6 +98,11 @@ Open your browser and navigate to: http://localhost:8000
 - Check if port 8000 is already in use
 - Verify the `.env` file exists and is properly configured
 - Check container logs: `docker logs medai-mvp-container`
+
+### Build fails with package errors:
+- Try the minimal Dockerfile: `docker build -t medai-mvp -f Dockerfile.minimal .`
+- Check if all required system packages are available in the base image
+- Consider using the alternative Dockerfile for different package management
 
 ### Application not accessible:
 - Verify the container is running: `docker ps`

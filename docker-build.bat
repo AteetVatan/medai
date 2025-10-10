@@ -8,7 +8,7 @@ set PORT=8000
 echo 🏗️  Building medAI MVP Docker image...
 
 REM Build the Docker image
-docker build -t %IMAGE_NAME% .
+docker build -t %IMAGE_NAME% -f Dockerfile .
 
 if %ERRORLEVEL% neq 0 (
     echo ❌ Docker build failed!
