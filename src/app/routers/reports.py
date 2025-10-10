@@ -43,8 +43,27 @@ async def suggest_report(payload: ReportSuggestionRequest) -> ClinicalReportDraf
 async def generate_report_pdf(report: ClinicalReport) -> StreamingResponse:
     """Render the submitted report as a downloadable PDF."""
 
+    # Debug logging
+    logger.info("PDF endpoint received report", extra={
+        "extra_fields": {
+            "patient_name": report.patient_name,
+            "diagnoses": report.diagnoses,
+            "insurance_type": report.insurance_type.value if report.insurance_type else None,
+            "treatment_outcome": report.treatment_outcome.value if report.treatment_outcome else None,
+            "patient_problem_statement": report.patient_problem_statement,
+            "therapy_status_note": report.therapy_status_note,
+            "follow_up_recommendation": report.follow_up_recommendation
+        }
+    })
+
     try:
         filename, pdf_bytes = render_report_pdf(report)
+        logger.info("PDF generated successfully", extra={
+            "extra_fields": {
+                "filename": filename,
+                "size": len(pdf_bytes)
+            }
+        })
     except RuntimeError as exc:
         logger.error("PDF generation failed: %s", exc)
         raise HTTPException(

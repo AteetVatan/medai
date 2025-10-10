@@ -123,11 +123,20 @@ tests/
 
 ## 🎤 Frontend Usage
 
+The frontend is built with **vanilla JavaScript** (no React/npm dependencies) and provides:
+
 1. **Start Session**: Enter encounter ID and select task type
 2. **Record Audio**: Click record button, speak into microphone
-3. **Real-time Updates**: See partial transcriptions as you speak
+3. **Real-time Updates**: See partial transcriptions as you speak via WebSocket
 4. **View Results**: Structured clinical notes with entities and summary
-5. **Save/Download**: Export results as JSON
+5. **Report Generation**: Fill and download PDF treatment reports
+6. **Save/Download**: Export results as JSON or PDF
+
+### Frontend Architecture
+- **Pure JavaScript**: No build process required
+- **WebSocket Integration**: Real-time audio streaming and transcription
+- **Audio Recording**: Browser MediaRecorder API
+- **Form Management**: Dynamic report form with AI-powered suggestions
 
 ## 🧪 Testing
 

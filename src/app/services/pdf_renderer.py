@@ -39,6 +39,19 @@ class _HTMLStripper(HTMLParser):
 
 def render_report_html(report: ClinicalReport) -> str:
     """Render the report Jinja2 template to an HTML string."""
+    
+    # Debug logging
+    logger.info("Rendering report HTML", extra={
+        "extra_fields": {
+            "patient_name": report.patient_name,
+            "diagnoses": report.diagnoses,
+            "insurance_type": report.insurance_type.value if report.insurance_type else None,
+            "treatment_outcome": report.treatment_outcome.value if report.treatment_outcome else None,
+            "patient_problem_statement": report.patient_problem_statement,
+            "therapy_status_note": report.therapy_status_note,
+            "follow_up_recommendation": report.follow_up_recommendation
+        }
+    })
 
     template = _env.get_template("report.html.j2")
     return template.render(report=report)
@@ -49,11 +62,20 @@ def render_report_pdf(report: ClinicalReport) -> Tuple[str, bytes]:
 
     html = render_report_html(report)
     filename = build_report_filename(report)
+    
+    logger.info("Starting PDF rendering", extra={"extra_fields": {"html_length": len(html)}})
 
+    # Try WeasyPrint first as requested
     pdf_bytes = _render_with_weasyprint(html)
-    if pdf_bytes is None:
+    if pdf_bytes is not None:
+        logger.info("WeasyPrint succeeded", extra={"extra_fields": {"pdf_size": len(pdf_bytes)}})
+    else:
+        logger.warning("WeasyPrint failed, trying ReportLab fallback")
         pdf_bytes = _render_with_reportlab(html)
+        if pdf_bytes is not None:           
+            logger.info("ReportLab succeeded", extra={"extra_fields": {"pdf_size": len(pdf_bytes)}})
     if pdf_bytes is None:
+        logger.warning("Both ReportLab and WeasyPrint failed, trying builtin PDF fallback")
         pdf_bytes = _render_with_builtin_pdf(html)
 
     logger.info("Generated report PDF", extra={"extra_fields": {"filename": filename, "size": len(pdf_bytes)}})
@@ -74,45 +96,120 @@ def _render_with_weasyprint(html: str) -> Optional[bytes]:
 
     try:  # pragma: no cover - import depends on optional dependency
         from weasyprint import HTML  # type: ignore
-    except Exception:  # pragma: no cover - optional dependency
+    except Exception as exc:  # pragma: no cover - optional dependency
+        logger.warning("WeasyPrint not available: %s", exc)
         return None
 
     try:
-        return HTML(string=html).write_pdf()
+        pdf_io = io.BytesIO()
+        HTML(string=html).write_pdf(pdf_io)
+        pdf_io.seek(0)
+        return pdf_io.read()
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.error("WeasyPrint rendering failed: %s", exc)
         return None
 
 
 def _render_with_reportlab(html: str) -> Optional[bytes]:
-    """Render HTML using a text-only ReportLab fallback."""
+    """Render HTML using a formatted ReportLab fallback."""
 
     try:  # pragma: no cover - optional dependency import
         from reportlab.lib.pagesizes import A4  # type: ignore
         from reportlab.pdfgen import canvas  # type: ignore
+        from reportlab.lib.styles import getSampleStyleSheet  # type: ignore
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer  # type: ignore
+        from reportlab.lib.units import inch  # type: ignore
     except Exception:
         logger.warning("ReportLab not available for PDF fallback")
         return None
 
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    text = pdf.beginText(40, height - 60)
-    text.setLeading(14)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    styles = getSampleStyleSheet()
+    story = []
 
-    plain_text = _strip_html(html)
-    for line in plain_text.splitlines():
-        if not line.strip():
-            text.textLine("")
-            continue
-        text.textLine(line.strip())
+    # Parse HTML content and create formatted paragraphs
+    content = _parse_html_for_reportlab(html)
+    
+    for element in content:
+        if element['type'] == 'title':
+            story.append(Paragraph(element['text'], styles['Title']))
+            story.append(Spacer(1, 12))
+        elif element['type'] == 'heading':
+            story.append(Paragraph(element['text'], styles['Heading2']))
+            story.append(Spacer(1, 6))
+        elif element['type'] == 'paragraph':
+            story.append(Paragraph(element['text'], styles['Normal']))
+            story.append(Spacer(1, 6))
+        elif element['type'] == 'line':
+            story.append(Paragraph(element['text'], styles['Normal']))
+            story.append(Spacer(1, 3))
 
-    pdf.drawText(text)
-    pdf.showPage()
-    pdf.save()
-
+    doc.build(story)
     buffer.seek(0)
-    return buffer.read()
+    pdf_bytes = buffer.read()
+    logger.info("ReportLab rendered successfully", extra={"extra_fields": {"pdf_size": len(pdf_bytes)}})
+    return pdf_bytes
+
+
+def _parse_html_for_reportlab(html: str) -> list[dict[str, str]]:
+    """Parse HTML content for ReportLab formatting."""
+    
+    # Remove CSS styles from the HTML
+    html_clean = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Parse the HTML content
+    elements = []
+    lines = html_clean.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Handle title
+        if '<h1>' in line and '</h1>' in line:
+            title = re.sub(r'<[^>]+>', '', line).strip()
+            elements.append({'type': 'title', 'text': title})
+        # Handle headings
+        elif '<h2>' in line and '</h2>' in line:
+            heading = re.sub(r'<[^>]+>', '', line).strip()
+            elements.append({'type': 'heading', 'text': heading})
+        # Handle paragraphs
+        elif '<p>' in line and '</p>' in line:
+            paragraph = re.sub(r'<[^>]+>', '', line).strip()
+            if paragraph:
+                elements.append({'type': 'paragraph', 'text': paragraph})
+        # Handle div content with class="title"
+        elif 'class="title"' in line:
+            title = re.sub(r'<[^>]+>', '', line).strip()
+            if title:
+                elements.append({'type': 'title', 'text': title})
+        # Handle div content with class="section-title"
+        elif 'class="section-title"' in line:
+            heading = re.sub(r'<[^>]+>', '', line).strip()
+            if heading:
+                elements.append({'type': 'heading', 'text': heading})
+        # Handle checkbox items
+        elif 'class="checkbox-item"' in line:
+            checkbox_text = re.sub(r'<[^>]+>', '', line).strip()
+            if checkbox_text:
+                # Check if checkbox is checked
+                is_checked = 'checked' in line
+                checkbox_symbol = '☑' if is_checked else '☐'
+                elements.append({'type': 'line', 'text': f'{checkbox_symbol} {checkbox_text}'})
+        # Handle div content (general)
+        elif '<div>' in line and '</div>' in line:
+            content = re.sub(r'<[^>]+>', '', line).strip()
+            if content and not content.startswith('<!DOCTYPE') and not content.startswith('<html'):
+                elements.append({'type': 'line', 'text': content})
+        # Handle list items
+        elif '<li>' in line and '</li>' in line:
+            item = re.sub(r'<[^>]+>', '', line).strip()
+            if item:
+                elements.append({'type': 'line', 'text': f'• {item}'})
+    
+    return elements
 
 
 def _strip_html(html: str) -> str:

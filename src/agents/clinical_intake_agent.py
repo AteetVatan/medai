@@ -442,9 +442,12 @@ class ClinicalIntakeAgent(Agent):
                 
                 all_transcriptions = []
                 for item in transcriptions:
-                    all_transcriptions.append(item["transcription"])
-                    
-                all_transcriptions.append(main_transcription)                
+                    #avoid duplicates
+                    all_transcriptions.append(item["transcription"].strip())
+                   
+                all_transcriptions.append(main_transcription)
+                #remove duplicates
+                all_transcriptions = list(set(all_transcriptions))             
                 
                 clean_transcript_result = await self.llm_tool.clean_transcript(
                     transcripts=all_transcriptions,

@@ -4,75 +4,251 @@
     <meta charset="UTF-8">
     <title>Behandlungsbericht</title>
     <style>
-        body { font-family: "Helvetica", "Arial", sans-serif; margin: 30px; color: #222; }
-        h1 { text-align: center; margin-bottom: 20px; }
-        .section { margin-bottom: 18px; }
-        .section h2 { font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 4px; margin-bottom: 8px; }
-        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; }
-        .label { font-weight: bold; }
-        ul { margin: 0; padding-left: 18px; }
-        .footer { margin-top: 30px; display: flex; justify-content: space-between; }
-        .signature { margin-top: 50px; border-top: 1px solid #555; padding-top: 6px; width: 200px; text-align: center; }
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body { 
+            font-family: "Arial", "Helvetica", sans-serif; 
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #000;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 15px;
+        }
+        
+        .recipient-info {
+            width: 45%;
+            font-size: 10pt;
+        }
+        
+        .company-info {
+            width: 45%;
+            text-align: right;
+        }
+        
+        .company-logo {
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 5px;
+        }
+        
+        .logo-box {
+            display: inline-block;
+            background-color: #0066cc;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 10pt;
+            margin-top: 5px;
+        }
+        
+        .date-line {
+            text-align: right;
+            margin-top: 10px;
+            font-size: 10pt;
+        }
+        
+        .title {
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        
+        .salutation {
+            margin-bottom: 15px;
+        }
+        
+        .patient-info {
+            margin-bottom: 15px;
+            font-size: 10pt;
+        }
+        
+        .section {
+            margin-bottom: 15px;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 11pt;
+        }
+        
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        
+        .checkbox-item {
+            display: block;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .checkbox {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 1px solid #000;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        
+        .checkbox.checked {
+            background-color: #000;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        
+        .footer-left {
+            font-size: 9pt;
+        }
+        
+        .footer-right {
+            font-size: 9pt;
+        }
+        
+        .signature {
+            margin-top: 30px;
+            text-align: center;
+        }
+        
+        .greeting {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>Behandlungsbericht</h1>
-    <div class="section grid">
-        <div><span class="label">Arzt:</span> {{ report.doctor_name }}</div>
-        <div><span class="label">Datum:</span> {{ report.report_date.strftime('%d.%m.%Y') }}</div>
-        <div><span class="label">Ort:</span> {{ report.report_city }}</div>
-        <div><span class="label">Patient:</span> {{ report.patient_name }}</div>
-        <div><span class="label">Geburtsdatum:</span> {{ report.patient_dob }}</div>
-        <div><span class="label">Versicherung:</span> {{ report.insurance_type.value }}</div>
-        <div><span class="label">Verordnung vom:</span> {{ report.prescription_date }}</div>
-        <div><span class="label">Behandlungszeitraum:</span> {{ report.treatment_date_from }} bis {{ report.treatment_date_to }}</div>
-        <div><span class="label">Therapeut:</span> {{ report.physiotherapist_name }}</div>
+    <!-- Header Section -->
+    <div class="header">
+        <div class="recipient-info">
+            <div>Frau</div>
+            <div>{{ report.doctor_name or 'Dres.med Anke Friedrich' }}</div>
+            <div>Neurologie</div>
+            <div>Herwarthstr. 100/102</div>
+            <div>45138 Essen</div>
+        </div>
+        <div class="company-info">
+            <div class="company-logo">Contilia Therapie und Reha Theaterpassage</div>
+            <div class="logo-box">Contilia</div>
+            <div class="date-line">{{ report.report_city or 'Essen' }}, den {{ report.report_date.strftime('%d.%m.%Y') if report.report_date else '' }}</div>
+        </div>
     </div>
 
+    <!-- Title -->
+    <div class="title">Behandlungsbericht</div>
+
+    <!-- Salutation -->
+    <div class="salutation">
+        Sehr geehrte Frau {{ (report.doctor_name or 'Dres.med Anke Friedrich').split(' ')[-1] }},
+    </div>
+
+    <!-- Patient Information -->
+    <div class="patient-info">
+        vielen Dank für die Überweisung Ihres Patienten {{ report.patient_name or 'Heinz-Jürgen Karsten' }}.<br>
+        Krankenkasse: {{ report.insurance_type.value if report.insurance_type else 'PRIVAT' }} geb.: {{ report.patient_dob or '20.02.1952' }}
+    </div>
+
+    <!-- Diagnoses -->
     <div class="section">
-        <h2>Diagnosen</h2>
-        {% if report.diagnoses %}
-        <ul>
+        <div class="section-title">Diagnosen:</div>
+        {% if report.diagnoses and report.diagnoses|length > 0 %}
             {% for item in report.diagnoses %}
-            <li>{{ item }}</li>
+                {{ item }}{% if not loop.last %}, {% endif %}
             {% endfor %}
-        </ul>
         {% else %}
-        <p>-</p>
+            Multifakttorielle Gangstörung u.a.beg PNP
         {% endif %}
     </div>
 
+    <!-- Prescription -->
     <div class="section">
-        <h2>Verordnete Therapie</h2>
-        <p>{{ report.prescribed_therapy_type or '-' }}</p>
+        <div class="section-title">Ihre Verordnung vom {{ report.prescription_date or '27.08.2025' }} über:</div>
+        {{ report.prescribed_therapy_type or 'KG Erwachsene ZNS' }}
     </div>
 
+    <!-- Treatment Period -->
     <div class="section">
-        <h2>Problemformulierung</h2>
-        <p>{{ report.patient_problem_statement or '-' }}</p>
+        Die von Ihnen verordnete Behandlung wurde vom {{ report.treatment_date_from or '02.09.2025' }} bis {{ report.treatment_date_to or '01.12.2025' }} von {{ report.physiotherapist_name or 'Sotirios Dimitriou' }} durchgeführt.
     </div>
 
+    <!-- Problem Formulation -->
     <div class="section">
-        <h2>Therapie-Verlauf</h2>
-        <p><span class="label">Ergebnis:</span> {{ report.treatment_outcome.value }}</p>
-        <p><span class="label">Status:</span> {{ report.therapy_status_note or '-' }}</p>
+        <div class="section-title">Problemformulierung des Patienten:</div>
+        {{ report.patient_problem_statement or '' }}
     </div>
 
+    <!-- Treatment Results -->
     <div class="section">
-        <h2>Empfehlung</h2>
-        <p>{{ report.follow_up_recommendation or '-' }}</p>
+        <div class="section-title">Die Behandlung zeigte folgendes Ergebnis:</div>
+        <div class="checkbox-group">
+            <div class="checkbox-item">
+                <span class="checkbox{% if report.treatment_outcome and report.treatment_outcome.value == 'BESCHWERDEFREI' %} checked{% endif %}"></span>
+                Beschwerdefreiheit
+            </div>
+            <div class="checkbox-item">
+                <span class="checkbox{% if not report.treatment_outcome or report.treatment_outcome.value == 'LINDERUNG' %} checked{% endif %}"></span>
+                Linderung der Beschwerden
+            </div>
+            <div class="checkbox-item">
+                <span class="checkbox{% if report.treatment_outcome and report.treatment_outcome.value == 'KEINE_BESSERUNG' %} checked{% endif %}"></span>
+                keine Besserung
+            </div>
+            <div class="checkbox-item">
+                <span class="checkbox{% if report.treatment_outcome and report.treatment_outcome.value == 'UNKLAR' %} checked{% endif %}"></span>
+                Stand der Therapie
+            </div>
+        </div>
     </div>
 
-    {% if report.transcript %}
+    <!-- Therapy Status -->
+    {% if report.therapy_status_note %}
     <div class="section">
-        <h2>Transkript (Auszug)</h2>
-        <p>{{ report.transcript }}</p>
+        <div class="section-title">Therapiestatus:</div>
+        {{ report.therapy_status_note }}
     </div>
     {% endif %}
 
+    <!-- Follow-up Recommendation -->
+    {% if report.follow_up_recommendation %}
+    <div class="section">
+        <div class="section-title">Weiterbehandlung:</div>
+        {{ report.follow_up_recommendation }}
+    {% else %}
+    <div class="section">
+        Eine Weiterbehandlung mit Krankengymnastik
+    {% endif %}
+    </div>
+
+    <!-- Greeting -->
+    <div class="greeting">
+        Mit freundlichen Grüßen
+    </div>
+
+    <!-- Footer -->
     <div class="footer">
-        <div>{{ report.report_city }}, {{ report.report_date.strftime('%d.%m.%Y') }}</div>
-        <div class="signature">{{ report.physiotherapist_name }}</div>
+        <div class="footer-left">Stand 07/23</div>
+        <div class="footer-right">Seite 1 von 2</div>
+    </div>
+
+    <!-- Signature -->
+    <div class="signature">
+        {{ report.physiotherapist_name or 'Sotirios Dimitriou' }}
     </div>
 </body>
 </html>

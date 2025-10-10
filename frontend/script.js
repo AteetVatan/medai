@@ -251,7 +251,7 @@ class MedAIApp {
                 break;
 
             case 'processing_started':
-                this.updateStatus('Verarbeitung läuft...', 'processing');
+                this.updateStatusWithLoading('Transcript and Physiotherapy summary is ready', 'processing');
                 this.recordButton.disabled = true;
                 break;
 
@@ -368,7 +368,8 @@ class MedAIApp {
             this.recordText.textContent = 'Aufnahme starten';
             this.stopButton.disabled = true;
 
-            this.updateStatus('Aufnahme beendet, verarbeite...', 'processing');
+            // Show loading icon with specific message
+            this.updateStatusWithLoading('Transcript and Physiotherapy summary is ready', 'processing');
             this.stopDurationTimer();
         }
     }
@@ -533,13 +534,20 @@ class MedAIApp {
     handleProcessingCompleted(data) {
         console.log('Processing completed:', data);
 
+        // Remove loading spinner and show completion message
         this.updateStatus('Verarbeitung abgeschlossen', 'ready');
         this.recordButton.disabled = false;
 
         if (data.success) {
             this.updateTranscript(data.transcription, true);
             this.updateEntities(data.entities);
-            this.updateSummary(data.structured_notes);
+
+            // Handle both clinical_summary and structured_notes
+            if (data.clinical_summary) {
+                this.updateSummary(data.clinical_summary);
+            } else if (data.structured_notes) {
+                this.updateSummary(data.structured_notes);
+            }
 
             this.showMessage(`Verarbeitung erfolgreich abgeschlossen in ${Math.round(data.processing_time_ms)}ms`, 'success');
 
@@ -688,6 +696,30 @@ class MedAIApp {
         this.statusDiv.className = `status ${type}`;
     }
 
+    updateStatusWithLoading(message, type) {
+        // Clear the status div
+        this.statusDiv.innerHTML = '';
+
+        // Create loading spinner element
+        const spinner = document.createElement('span');
+        spinner.className = 'loading-spinner';
+
+        // Create text node for the message
+        const textNode = document.createTextNode(` ${message}`);
+
+        // Append spinner and text to status div
+        this.statusDiv.appendChild(spinner);
+        this.statusDiv.appendChild(textNode);
+
+        // Set the status class
+        this.statusDiv.className = `status ${type}`;
+
+        // Debug logging
+        console.log('Loading spinner added:', this.statusDiv.innerHTML);
+        console.log('Status div class:', this.statusDiv.className);
+        console.log('Spinner element:', spinner);
+    }
+
     showMessage(message, type) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `${type}-message`;
@@ -730,6 +762,12 @@ class ReportFormManager {
             therapy_status_note: document.getElementById('therapyStatus'),
             follow_up_recommendation: document.getElementById('followUp')
         };
+
+        // Debug: Check if form elements are found
+        console.log('Form elements found:');
+        Object.entries(this.editable).forEach(([key, element]) => {
+            console.log(`  ${key}: ${element ? 'FOUND' : 'NOT FOUND'}`);
+        });
         this.buttons = {
             suggest: document.getElementById('reportSuggestButton'),
             save: document.getElementById('reportSaveButton'),
@@ -981,6 +1019,32 @@ class ReportFormManager {
     }
 
     buildPayload() {
+        // Read current form values to ensure we have the latest data
+        const currentFormData = this.getCurrentFormData();
+
+        // Debug logging
+        console.log('Building payload with current form data:', currentFormData);
+        console.log('Report data:', this.reportData);
+        console.log('Final payload being sent:', {
+            doctor_name: this.reportData.doctor_name,
+            patient_name: this.reportData.patient_name,
+            patient_dob: this.reportData.patient_dob,
+            prescription_date: this.reportData.prescription_date,
+            treatment_date_from: this.reportData.treatment_date_from,
+            treatment_date_to: this.reportData.treatment_date_to,
+            physiotherapist_name: this.reportData.physiotherapist_name,
+            report_city: currentFormData.report_city || (this.defaults ? this.defaults.report_city : ''),
+            report_date: currentFormData.report_date || this.getToday(),
+            insurance_type: currentFormData.insurance_type,
+            diagnoses: currentFormData.diagnoses,
+            prescribed_therapy_type: currentFormData.prescribed_therapy_type,
+            patient_problem_statement: currentFormData.patient_problem_statement,
+            treatment_outcome: currentFormData.treatment_outcome,
+            therapy_status_note: currentFormData.therapy_status_note,
+            follow_up_recommendation: currentFormData.follow_up_recommendation,
+            transcript: this.reportData.transcript || this.latestTranscript
+        });
+
         return {
             doctor_name: this.reportData.doctor_name,
             patient_name: this.reportData.patient_name,
@@ -989,17 +1053,49 @@ class ReportFormManager {
             treatment_date_from: this.reportData.treatment_date_from,
             treatment_date_to: this.reportData.treatment_date_to,
             physiotherapist_name: this.reportData.physiotherapist_name,
-            report_city: this.reportData.report_city || (this.defaults ? this.defaults.report_city : ''),
-            report_date: this.reportData.report_date || this.getToday(),
-            insurance_type: this.reportData.insurance_type,
-            diagnoses: this.reportData.diagnoses,
-            prescribed_therapy_type: this.reportData.prescribed_therapy_type,
-            patient_problem_statement: this.reportData.patient_problem_statement,
-            treatment_outcome: this.reportData.treatment_outcome,
-            therapy_status_note: this.reportData.therapy_status_note,
-            follow_up_recommendation: this.reportData.follow_up_recommendation,
+            report_city: currentFormData.report_city || (this.defaults ? this.defaults.report_city : ''),
+            report_date: currentFormData.report_date || this.getToday(),
+            insurance_type: currentFormData.insurance_type,
+            diagnoses: currentFormData.diagnoses,
+            prescribed_therapy_type: currentFormData.prescribed_therapy_type,
+            patient_problem_statement: currentFormData.patient_problem_statement,
+            treatment_outcome: currentFormData.treatment_outcome,
+            therapy_status_note: currentFormData.therapy_status_note,
+            follow_up_recommendation: currentFormData.follow_up_recommendation,
             transcript: this.reportData.transcript || this.latestTranscript
         };
+    }
+
+    getCurrentFormData() {
+        const formData = {};
+
+        // Read current values from editable form fields
+        Object.entries(this.editable).forEach(([key, element]) => {
+            if (!element) {
+                console.warn(`Form element not found for key: ${key}`);
+                formData[key] = this.reportData[key] || '';
+                return;
+            }
+
+            const value = element.value.trim();
+            console.log(`Form field ${key}: "${value}"`);
+
+            switch (key) {
+                case 'diagnoses':
+                    formData.diagnoses = value
+                        ? value.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+                        : [];
+                    break;
+                case 'report_date':
+                    formData.report_date = value || this.getToday();
+                    break;
+                default:
+                    formData[key] = value;
+                    break;
+            }
+        });
+
+        return formData;
     }
 
     async saveReport() {

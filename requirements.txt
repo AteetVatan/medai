@@ -2,6 +2,7 @@
 
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
+Jinja2==3.1.4
 websockets==14.0
 #pydantic==2.10.0
 pydantic==2.10.4
@@ -35,4 +36,4 @@ flake8==7.1.1
 mypy==1.13.0
 gunicorn==23.0.0
 reportlab==4.0.7
-
+weasyprint==62.3
