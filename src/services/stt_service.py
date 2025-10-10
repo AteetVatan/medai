@@ -23,6 +23,7 @@ from pydub import AudioSegment
 from ..utils.config import settings, ModelConfig, LatencyConfig
 from ..utils.logging import get_logger, get_latency_logger, monitor_latency
 from ..utils.cache import cached, cache_key, get_cache_stats
+from ..utils.audio import audio_processor
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()
@@ -43,6 +44,7 @@ class STTService:
             "latencies": []
         }
         
+        #to ensure any library (like Hugging Face) that calls ffmpeg without a full path will still find it.
         # Ensure ffmpeg is discoverable by libs expecting it on PATH
         try:
             ffmpeg_path = get_ffmpeg_exe()
@@ -106,18 +108,40 @@ class STTService:
     async def _process_audio_for_stt(self, audio_data: bytes, target_format: str = "wav") -> bytes:
         """Process audio to standard format for STT."""
         try:
-            # Load audio with pydub
-            audio = AudioSegment.from_file(io.BytesIO(audio_data))
+            logger.info("Processing audio for STT")
             
-            # Convert to standard format
-            audio = audio.set_frame_rate(16000)  # 16kHz
-            audio = audio.set_channels(1)        # Mono
-            audio = audio.set_sample_width(2)    # 16-bit
+           
+            #for testing
+            # audio_filename = f"audio_data_1.{target_format}"
+            # audio_path = os.path.join("audio_data", audio_filename)
             
-            # Export to target format
-            output_buffer = io.BytesIO()
-            audio.export(output_buffer, format=target_format)
-            return output_buffer.getvalue()
+            # Save audio data as file
+            # os.makedirs("audio_data", exist_ok=True)            
+            # with open(audio_path, "wb") as f:
+            #     f.write(audio_data)
+                
+            #for testing read all audio data    
+            #with open(audio_path, "rb") as f:
+            #    audio_data = f.read()
+                
+            
+            return await audio_processor.process_audio_for_stt(audio_data, target_format)
+            
+            #ateet
+ 
+            
+            # # Load audio with pydub
+            # audio = AudioSegment.from_file(io.BytesIO(audio_data))
+            
+            # # Convert to standard format
+            # audio = audio.set_frame_rate(16000)  # 16kHz
+            # audio = audio.set_channels(1)        # Mono
+            # audio = audio.set_sample_width(2)    # 16-bit
+            
+            # # Export to target format
+            # output_buffer = io.BytesIO()
+            # audio.export(output_buffer, format=target_format)
+            # return output_buffer.getvalue()
             
         except Exception as e:
             logger.error(f"Audio processing failed: {e}")
@@ -203,13 +227,40 @@ class STTService:
             file_obj = io.BytesIO(processed_audio)
             file_obj.name = "audio.wav"  # Together AI SDK reads filename from file-like
 
-            response = self.together_client.audio.transcribe(
-                model=ModelConfig.TOGETHER_WHISPER_MODEL,
+            # response = self.together_client.audio.transcribe(
+            #     model=ModelConfig.TOGETHER_WHISPER_MODEL,
+            #     file=file_obj,
+            #     language="de",  # German for medical context
+            #     response_format="json",
+            #     timestamp_granularities="segment"
+            # )
+            
+           
+            response = self.together_client.audio.transcriptions.create(
                 file=file_obj,
-                language="de",  # German for medical context
+                model=ModelConfig.TOGETHER_WHISPER_MODEL,
+                language="de",                      # German medical context
                 response_format="json",
-                timestamp_granularities="segment"
+                timestamp_granularities="segment",
             )
+          
+            
+            #  # Transcribe using Together AI translations
+            # file_obj = io.BytesIO(processed_audio)
+            # file_obj.name = "audio.wav"  # Together AI SDK reads filename from file-like
+            
+            # try:
+            #     response_2 = self.together_client.audio.translations.create(
+            #         file=file_obj,
+            #         model=ModelConfig.TOGETHER_WHISPER_MODEL,
+            #         language="de",                      # German medical context
+            #         response_format="json",
+            #         timestamp_granularities="segment",
+            #     )
+            # except Exception as e:
+            #     pass
+            
+            
             
             transcription = (getattr(response, "text", "") or "").strip()
             latency = time.time() - start_time
@@ -249,6 +300,7 @@ class STTService:
         Returns:
             Dict with transcription results
         """
+        
         start_time = time.time()
         
         try:
@@ -258,28 +310,8 @@ class STTService:
             if duration_seconds:
                 self._validate_audio(audio_data, duration_seconds)
             
-            # Try primary service first (unless fallback is explicitly requested)
-            if not use_fallback and self.fw_model:
-                try:
-                    result = await self._transcribe_with_whisper(audio_data)
-                    latency_ms = result["latency"] * 1000
-                    
-                    # Check if latency exceeds threshold and trigger fallback
-                    if latency_ms > settings.stt_final_threshold:
-                        logger.warning(f"Primary STT latency {latency_ms:.1f}ms exceeds threshold {settings.stt_final_threshold}ms, trying fallback")
-                        use_fallback = True
-                    else:
-                        self._update_stats(result["latency"], True)
-                        result["fallback_used"] = False
-                        result["threshold_exceeded"] = False
-                        return result
-                        
-                except Exception as e:
-                    logger.warning(f"Primary STT failed, trying fallback: {str(e)}")
-                    use_fallback = True
-            
-            # Use fallback service
-            if self.together_client:
+            # Try primary service first (unless fallback is explicitly requested)    
+            if not use_fallback and self.together_client:
                 try:
                     result = await self._transcribe_with_together(audio_data)
                     latency_ms = result["latency"] * 1000
@@ -297,12 +329,34 @@ class STTService:
                 except Exception as e:
                     logger.error(f"Fallback STT also failed: {str(e)}")
                     self._update_stats(time.time() - start_time, False)
-                    return {"error": f"STT failed: {str(e)}"}
+                    #return {"error": f"STT failed: {str(e)}"}
             else:
                 error_msg = "No STT services available"
                 self._update_stats(time.time() - start_time, False)
-                return {"error": error_msg}
-                
+                #return {"error": error_msg}
+            
+             # Fallback path (or forced fallback or primary failed)
+            if self.fw_model:
+                try:
+                    result = await self._transcribe_with_whisper(audio_data)
+                    latency_ms = result["latency"] * 1000
+                    
+                    # Check if latency exceeds threshold and trigger fallback
+                    if latency_ms > settings.stt_final_threshold:
+                        logger.warning(f"Primary STT latency {latency_ms:.1f}ms exceeds threshold {settings.stt_final_threshold}ms, trying fallback")
+                        use_fallback = True
+                    else:
+                        self._update_stats(result["latency"], True)
+                        result["fallback_used"] = False
+                        result["threshold_exceeded"] = False
+                        return result
+                        
+                except Exception as e:
+                    logger.warning(f"Primary STT failed, trying fallback: {str(e)}")
+            
+            
+            
+          
         except Exception as e:
             latency = time.time() - start_time
             self._update_stats(latency, False)
@@ -510,11 +564,36 @@ class STTService:
             "timestamp": time.time()
         }
         
+        # try:
+        #     audio_filename = f"audio_data.wav"
+        #     audio_path = os.path.join("audio_data", audio_filename)
+        #     with open(audio_path, "rb") as f:
+        #         test_audio = f.read()
+        # except Exception as e:
+        #     test_audio = b"\x1aE" * 1600  # 0.1 seconds of silence
+        #     logger.error(f"Failed to read audio data: {e}")
+        #     raise
+        
+        
+        
+        def generate_silent_wav(duration_sec=0.1, sr=16000):
+            samples = np.zeros(int(duration_sec * sr), dtype=np.int16)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sr)
+                wf.writeframes(samples.tobytes())
+            buf.seek(0)
+            return buf.read()
+        
+        return
+    
         # Test Faster-Whisper
+        test_audio = generate_silent_wav(duration_sec=0.1, sr=1600)
         try:
             start_time = time.time()
-            # Send minimal test request
-            test_audio = b"\x00" * 1600  # 0.1 seconds of silence
+            # Send minimal test request           
             await self._transcribe_with_whisper(test_audio)
             fw_latency = (time.time() - start_time) * 1000
             health_status["providers"]["faster_whisper"] = {
@@ -530,7 +609,7 @@ class STTService:
         # Test Together AI
         try:
             start_time = time.time()
-            test_audio = b"\x00" * 1600
+            #test_audio = b"\x00" * 1600
             await self._transcribe_with_together(test_audio)
             together_latency = (time.time() - start_time) * 1000
             health_status["providers"]["together"] = {

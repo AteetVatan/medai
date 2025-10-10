@@ -7,7 +7,7 @@ A real-time clinical intake and documentation backend with speech-to-text, medic
 ### Core Components
 
 - **STT Service**: Whisper (openai/whisper-large-v3) and Together (openai/whisper-large-v3)
-- **NER Service**: spaCy + German medical models + ICD dictionaries
+- **NER Service**: External microservice architecture for medical entity recognition
 - **LLM Service**: Mistral 7B with cost-effective fallbacks
 - **Translation Service**: NLLB-200 primary, DeepL fallback
 - **Storage Service**: Supabase Postgres + S3

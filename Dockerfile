@@ -73,8 +73,7 @@ COPY src/ ./src/
 COPY frontend/ ./frontend/
 
 # Download spaCy models
-RUN python -m spacy download de_core_news_sm && \
-    python -m spacy download en_core_web_sm
+# spaCy models removed - using NER microservice architecture
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash medai && \
@@ -132,8 +131,7 @@ COPY src/ ./src/
 COPY frontend/ ./frontend/
 
 # Download spaCy models
-RUN python -m spacy download de_core_news_sm && \
-    python -m spacy download en_core_web_sm
+# spaCy models removed - using NER microservice architecture
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash medai && \

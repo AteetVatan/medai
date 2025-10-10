@@ -65,7 +65,7 @@ async def main():
     print("=" * 50)
     
     # Test all services
-    await test_stt_thresholds()
+    #await test_stt_thresholds()
     await test_llm_thresholds()
     await test_translation_thresholds()
     

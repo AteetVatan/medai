@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import base64
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import uuid
 
 import websockets
@@ -34,6 +34,7 @@ class WebSocketManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
         self.audio_buffers: Dict[str, bytes] = {}
+        self.partial_transcriptions: Dict[str, List[Dict[str, Any]]] = {}
         self.session_data: Dict[str, Dict[str, Any]] = {}
     
     async def connect(self, websocket: WebSocket, session_id: str, user_id: str, organization_id: str):
@@ -41,6 +42,7 @@ class WebSocketManager:
         await websocket.accept()
         self.active_connections[session_id] = websocket
         self.audio_buffers[session_id] = b""
+        self.partial_transcriptions[session_id] = []
         self.session_data[session_id] = {
             "user_id": user_id,
             "organization_id": organization_id,
@@ -66,6 +68,8 @@ class WebSocketManager:
             del self.active_connections[session_id]
         if session_id in self.audio_buffers:
             del self.audio_buffers[session_id]
+        if session_id in self.partial_transcriptions:
+            del self.partial_transcriptions[session_id]
         if session_id in self.session_data:
             del self.session_data[session_id]
         
@@ -109,6 +113,20 @@ class WebSocketManager:
         """Clear audio buffer."""
         if session_id in self.audio_buffers:
             self.audio_buffers[session_id] = b""
+    
+    def add_partial_transcription(self, session_id: str, transcription_data: Dict[str, Any]):
+        """Add partial transcription result to buffer."""
+        if session_id in self.partial_transcriptions:
+            self.partial_transcriptions[session_id].append(transcription_data)
+    
+    def get_partial_transcriptions(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get all accumulated partial transcriptions."""
+        return self.partial_transcriptions.get(session_id, [])
+    
+    def clear_partial_transcriptions(self, session_id: str):
+        """Clear partial transcriptions buffer."""
+        if session_id in self.partial_transcriptions:
+            self.partial_transcriptions[session_id] = []
 
 
 # Global WebSocket manager
@@ -232,8 +250,16 @@ async def handle_audio_chunk(session_id: str, data: Dict[str, Any]):
         
         # Process partial transcription if we have enough audio
         accumulated_audio = ws_manager.get_audio_buffer(session_id)
-        if len(accumulated_audio) > 16000:  # At least 1 second at 16kHz
-            await process_partial_transcription(session_id, accumulated_audio)
+        logger.info(f"Audio chunk received: {len(audio_chunk)} bytes, total accumulated: {len(accumulated_audio)} bytes")
+        if len(accumulated_audio) > 8000:  # Reduced threshold for faster feedback (0.5 seconds)
+            logger.info(f"Triggering partial transcription for session {session_id} - threshold met!")
+            try:
+                await process_partial_transcription(session_id, accumulated_audio)
+                logger.info(f"Partial transcription completed successfully for session {session_id}")
+            except Exception as e:
+                logger.error(f"Partial transcription failed for session {session_id}: {e}")
+        else:
+            logger.info(f"Not enough audio yet: {len(accumulated_audio)} bytes (need > 8000)")
         
         # Send acknowledgment
         await ws_manager.send_message(session_id, {
@@ -252,30 +278,54 @@ async def handle_audio_chunk(session_id: str, data: Dict[str, Any]):
         })
 
 
-async def process_partial_transcription(session_id: str, audio_data: bytes):
+async def process_partial_transcription(session_id: str, audio_data: bytes, use_stt: bool = True):
     """Process partial transcription for real-time updates."""
     try:
-        session_data = ws_manager.get_session_data(session_id)
-        user_id = session_data["user_id"]
         
-        with RequestContext(user_id=user_id):
+        if use_stt:
+            session_data = ws_manager.get_session_data(session_id)
+            user_id = session_data["user_id"]
+            
+            logger.info(f"Starting partial transcription for session {session_id}, audio size: {len(audio_data)} bytes")
+            
             # Convert to WAV format
             from ..services.stt_service import stt_service
-            wav_data = stt_service._convert_webm_to_wav(audio_data)
+            #wav_data = await stt_service._process_audio_for_stt(audio_data, "wav")
             
-            # Get partial transcription
-            result = await stt_service.transcribe_audio(wav_data, "wav")
+            # Get partial transcription with proper context
+            with RequestContext(user_id=user_id, request_id=f"partial_transcription_{session_id}"):
+                logger.info(f"Calling STT service for partial transcription, audio size: {len(audio_data)} bytes")
+                result = await stt_service.transcribe_audio(audio_data, "webm")  # Use webm format as sent from frontend
+                logger.info(f"STT service returned result: {result}")
             
-            # Send partial transcription
-            await ws_manager.send_message(session_id, {
-                "type": "partial_transcription",
-                "data": {
-                    "transcription": result["text"],
-                    "confidence": result["confidence"],
-                    "model": result["model"],
-                    "timestamp": asyncio.get_event_loop().time()
+            logger.info(f"Partial transcription completed for session {session_id}: '{result['text'][:50]}...'")
+        
+        else:        
+            result = {
+                    "text": "Processing...",
+                    "model": "together_whisper",
+                    "latency": 0.0,
+                    "confidence": 1.0,  # Together AI doesn't provide confidence scores
+                    "provider": "None"
                 }
-            })
+        
+        # Store partial transcription data
+        transcription_data = {
+            "transcription": result["text"],
+            "confidence": result["confidence"],
+            "model": result["model"],
+            "timestamp": asyncio.get_event_loop().time(),
+            "audio_size": len(audio_data)
+        }
+        ws_manager.add_partial_transcription(session_id, transcription_data)
+        
+        # Send partial transcription
+        await ws_manager.send_message(session_id, {
+            "type": "partial_transcription",
+            "data": transcription_data
+        })
+        
+        logger.info(f"Partial transcription stored and sent to frontend for session {session_id}")
     
     except Exception as e:
         logger.warning(f"Partial transcription failed for {session_id}: {e}")
@@ -293,14 +343,18 @@ async def handle_end_session(session_id: str, data: Dict[str, Any]):
             })
             return
         
-        # Get accumulated audio
+        # Get accumulated audio and partial transcriptions
         accumulated_audio = ws_manager.get_audio_buffer(session_id)
+        accumulated_transcriptions = ws_manager.get_partial_transcriptions(session_id)
+        
         if not accumulated_audio:
             await ws_manager.send_message(session_id, {
                 "type": "error",
                 "error": "No audio data received"
             })
             return
+        
+        logger.info(f"Session {session_id} ending with {len(accumulated_transcriptions)} partial transcriptions")
         
         # Send processing started message
         await ws_manager.send_message(session_id, {
@@ -316,7 +370,8 @@ async def handle_end_session(session_id: str, data: Dict[str, Any]):
             encounter_id=session_data["encounter_id"],
             organization_id=session_data["organization_id"],
             user_id=session_data["user_id"],
-            audio_format="wav",
+            transcriptions=accumulated_transcriptions,
+            audio_format="webm",
             translate_to=session_data.get("translate_to"),
             task_type=session_data.get("task_type", "intake_summary")
         )
@@ -334,12 +389,15 @@ async def handle_end_session(session_id: str, data: Dict[str, Any]):
                 "structured_notes": result.structured_notes,
                 "translated_notes": result.translated_notes,
                 "processing_time_ms": result.processing_time_ms,
-                "errors": result.errors
+                "errors": result.errors,
+                "partial_transcriptions": accumulated_transcriptions,
+                "partial_transcription_count": len(accumulated_transcriptions)
             }
         })
         
-        # Clear audio buffer
+        # Clear buffers
         ws_manager.clear_audio_buffer(session_id)
+        ws_manager.clear_partial_transcriptions(session_id)
         
     except Exception as e:
         logger.error(f"Error ending session {session_id}: {e}")

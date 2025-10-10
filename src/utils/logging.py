@@ -270,8 +270,9 @@ class RequestContext:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for token in self._tokens:
-            token.delete()
+        # Restore previous context variable values using the tokens
+        for token in reversed(self._tokens):
+            token.var.reset(token)
 
 
 def _check_threshold(operation: str, duration_ms: float) -> bool:

@@ -4,17 +4,24 @@ Handles API keys, latency thresholds, and environment settings.
 """
 
 from typing import Optional, List
-from pydantic import BaseSettings, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings as PydanticBaseSettings
 
 
 class Settings(PydanticBaseSettings):
     """Application settings with environment variable support."""
     
+    debug: bool = Field(False, env="DEBUG")
+    reload: bool = Field(False, env="RELOAD")
+    
+    # NER Microservice Configuration
+    ner_microservice_base_url: str = Field("https://medainer-production.up.railway.app/", env="NER_MICROSERVICE_BASE_URL")
+    
     # API Keys    
     together_api_key: Optional[str] = Field(None, env="TOGETHER_API_KEY")
     supabase_url: str = Field(..., env="SUPABASE_URL")
     supabase_key: str = Field(..., env="SUPABASE_KEY")
+    supabase_password: str = Field(..., env="SUPABASE_PASSWORD")
     
     # Model Configuration
     mistral_api_key: Optional[str] = Field(None, env="MISTRAL_API_KEY")
@@ -89,11 +96,12 @@ class ModelConfig:
     
     # Model-specific settings
     TOGETHER_WHISPER_MODEL = "openai/whisper-large-v3"
-    MISTRAL_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
+    MISTRAL_MODEL_OLD = "mistralai/Mistral-7B-Instruct-v0.2"
+    MISTRAL_MODEL = "open-mixtral-8x7b"
     
-    # NER Models
-    SPACY_MODEL_DE = "de_core_news_sm"
-    MEDICAL_NER_MODEL = "en_core_med7_lg"  # Fallback for English medical NER
+    # NER Models - now using microservice architecture
+    # SPACY_MODEL_DE = "de_core_news_sm"  # Removed - using NER microservice
+    # MEDICAL_NER_MODEL = "en_core_med7_lg"  # Removed - using NER microservice
     
     # Supported languages for NLLB
     SUPPORTED_LANGUAGES = {

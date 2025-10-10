@@ -8,9 +8,14 @@ import os
 import sys
 import subprocess
 import time
+import asyncio
+import logging
+import argparse
 from pathlib import Path
 import urllib.request
 import zipfile
+import uvicorn
+from src.utils.config import settings
 
 def check_environment():
     """Check if environment is properly configured."""
@@ -46,119 +51,147 @@ def install_dependencies():
         print(f"[ERROR] Failed to install dependencies: {e}")
         return False
 
-def download_spacy_models(model_dir: str = "models"):
+def check_ner_microservice():
     """
-    Download/install spaCy models for the German physio/rehab MVP and optionally
-    fetch the GERNERMEDpp model (GottBERT variant) and unpack it for manual loading.
-    Returns True if at least the core German model works.
+    Check if NER microservice is available and healthy.
+    Returns True if microservice is accessible.
     """
-    print("Installing spaCy models for MVP (German physiotherapy)...")
-
-    # 1) German core pipeline
-    cmd_core = [sys.executable, "-m", "spacy", "download", "de_core_news_md"]
-    try:
-        print(f"  Running: {' '.join(cmd_core)}")
-        subprocess.run(cmd_core, check=True, capture_output=True, text=True)
-        print("  [OK] Installed de_core_news_md")
-    except subprocess.CalledProcessError as e:
-        print(f"  [WARN] Failed to download de_core_news_md:\n{e.stderr or e.stdout or 'No output'}")
-
-    # 2) Download GERNERMEDpp zip to local model directory
-    gernermedpp_link = "https://myweb.rz.uni-augsburg.de/~freijoha/GERNERMEDpp/GERNERMEDpp_GottBERT.zip"
-    target_zip = os.path.join(model_dir, "GERNERMEDpp_GottBERT.zip")
-    target_folder = os.path.join(model_dir, "GERNERMEDpp_GottBERT")
-    try:
-        os.makedirs(model_dir, exist_ok=True)
-        print(f"  Downloading GERNERMEDpp model from {gernermedpp_link} …")
-        urllib.request.urlretrieve(gernermedpp_link, target_zip)
-        print(f"  [OK] Downloaded to {target_zip}")
-    except Exception as e:
-        print(f"  [WARN] Could not download GERNERMEDpp zip: {e}")
-
-    # 3) Unzip the model if download succeeded
-    if os.path.exists(target_zip):
-        try:
-            print(f"  Unzipping GERNERMEDpp model to {target_folder} …")
-            with zipfile.ZipFile(target_zip, 'r') as zf:
-                zf.extractall(target_folder)
-            print("  [OK] Unzipped GERNERMEDpp")
-        except Exception as e:
-            print(f"  [WARN] Failed to extract GERNERMEDpp zip: {e}")
-
-    # Optional sanity check: try loading spaCy German model and (if installed) GERNERMEDpp
-    try:
-        import spacy
-        # Load German core pipeline
-        nlp_core = spacy.load("de_core_news_md")
-        print("✔ Loaded de_core_news_md")
-
-        # Attempt to load GERNERMEDpp as spaCy pipeline (if it has spaCy format)
-        # Assume that if there is a "pipeline" folder inside target_folder, it may be spaCy.
-        if os.path.isdir(target_folder):
-            try:
-                nlp_pp = spacy.load(target_folder)
-                print("✔ Loaded GERNERMEDpp spaCy pipeline")
-            except Exception as med_err:
-                print(f"[INFO] GERNERMEDpp is not a spaCy-serializable pipeline, or load failed: {med_err}")
-        else:
-            print("[INFO] GERNERMEDpp directory not present for spaCy load attempt")
-
-        print("[OK] Verified spaCy core; GERNERMEDpp integration is optional")
-        return True
-    except Exception as e:
-        print(f"[WARN] Load check failed: {e}")
-        print("You may need to reinstall the core German model or adjust your spaCy versions.")
-        return False
-
-def start_server():
-    """Start the development server."""
-    print(" Starting medAI MVP development server...")
-    print("   API will be available at: http://localhost:8000")
-    print("   API docs at: http://localhost:8000/docs")
-    print("   Press Ctrl+C to stop")
-    print("-" * 60)
+    print("Checking NER microservice availability...")
     
     try:
-        # Start uvicorn server
-        subprocess.run([
-            sys.executable, "-m", "uvicorn",
-            "src.api.main:app",
-            "--host", "0.0.0.0",
-            "--port", "8000",
-            "--reload",
-            "--log-level", "info"
-        ])
-    except KeyboardInterrupt:
-        print("\n👋 Server stopped")
-    except Exception as e:
-        print(f"[ERROR] Server error: {e}")
+        import httpx
+        import asyncio
+        
+        async def check_microservice():
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                try:
+                    response = await client.get(f"{settings.ner_microservice_base_url}/health")
+                    if response.status_code == 200:
+                        print("✔ NER microservice is healthy")
+                        return True
+                    else:
+                        print(f"✗ NER microservice returned status {response.status_code}")
+                        return False
+                except httpx.ConnectError:
+                    print("✗ NER microservice is not running on localhost:8000")
+                    return False
+        
+        return asyncio.run(check_microservice())
+    except ImportError:
+        print("✗ httpx not available for microservice check")
         return False
-    
-    return True
+    except Exception as e:
+        print(f"✗ Error checking NER microservice: {e}")
+        return False
+
+async def run_service_async(
+    host: str = "0.0.0.0", 
+    port: int = 8000, 
+    workers: int = 1,
+    reload: bool = True,
+    log_level: str = "info"
+):
+    """Run FastAPI service safely within an existing event loop."""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting medAI MVP Service on {host}:{port}")
+    logger.info(f"Workers: {workers}")
+    logger.info(f"Reload: {reload}")
+    logger.info(f"Log level: {log_level}")
+
+    config_uvicorn = uvicorn.Config(
+        "src.api.main:app",
+        host=host,
+        port=port,
+        workers=workers,
+        log_level=log_level,
+        reload=reload,
+    )
+    server = uvicorn.Server(config_uvicorn)
+    await server.serve()
+
+
+async def run_production_service(
+    host: str = "0.0.0.0", 
+    port: int = 8000, 
+    workers: int = 1,
+    log_level: str = "info"
+):
+    """Run FastAPI service in production mode (no reload)."""
+    return await run_service_async(
+        host=host,
+        port=port,
+        workers=workers,
+        reload=False,
+        log_level=log_level
+    )
+
+
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="medAI MVP Development Server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--workers", type=int, default=1, help="Number of worker processes")
+    parser.add_argument("--production", action="store_true", help="Run in production mode (no reload)")
+    parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"], help="Log level")
+    parser.add_argument("--skip-checks", action="store_true", help="Skip environment and microservice checks")
+    return parser.parse_args()
 
 
 def main():
     """Main startup function."""
+    args = parse_arguments()
+    
     print(" medAI MVP Development Server")
     print("=" * 60)
+    print(f"Mode: {'Production' if args.production else 'Development'}")
+    print(f"Host: {args.host}")
+    print(f"Port: {args.port}")
+    print(f"Workers: {args.workers}")
+    print(f"Log Level: {args.log_level}")
+    print("-" * 60)
     
     # Change to project root
     project_root = Path(__file__).parent
     os.chdir(project_root)
     
-    # Check environment
-    if not check_environment():
-        sys.exit(1)
-    
-    # Install dependencies
-    if not install_dependencies():
-        sys.exit(1)
-    
-    # Download spaCy models
-    download_spacy_models()
+    # Check environment (unless skipped)
+    if not args.skip_checks:
+        # if not check_environment():
+        #     sys.exit(1)
+        
+        # # Install dependencies
+        # if not install_dependencies():
+        #     sys.exit(1)
+        
+        # Check NER microservice availability
+        check_ner_microservice()
     
     # Start server
-    if not start_server():
+    try:
+        if args.production:
+            # Production mode
+            asyncio.run(run_production_service(
+                host=args.host,
+                port=args.port,
+                workers=args.workers,
+                log_level=args.log_level
+            ))
+        else:
+            # Development mode
+            asyncio.run(run_service_async(
+                host=args.host,
+                port=args.port,
+                workers=args.workers,
+                reload=True,
+                log_level=args.log_level
+            ))
+    except KeyboardInterrupt:
+        print("\n👋 Server stopped")
+    except Exception as e:
+        print(f"[ERROR] Server error: {e}")
         sys.exit(1)
 
 

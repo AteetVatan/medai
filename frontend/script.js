@@ -19,6 +19,7 @@ class MedAIApp {
         this.initializeElements();
         this.attachEventListeners();
         this.generateSessionId();
+        this.initializeUI();
     }
 
     initializeElements() {
@@ -45,6 +46,12 @@ class MedAIApp {
         this.entitiesText = document.getElementById('entitiesText');
         this.summaryText = document.getElementById('summaryText');
 
+        console.log('Elements initialized:', {
+            transcriptText: this.transcriptText,
+            entitiesText: this.entitiesText,
+            summaryText: this.summaryText
+        });
+
         // Stats elements
         this.durationValue = document.getElementById('durationValue');
         this.chunksValue = document.getElementById('chunksValue');
@@ -55,8 +62,14 @@ class MedAIApp {
     }
 
     attachEventListeners() {
-        this.recordButton.addEventListener('click', () => this.toggleRecording());
-        this.startButton.addEventListener('click', () => this.startSession());
+        this.recordButton.addEventListener('click', () => {
+            console.log('Record button clicked, disabled:', this.recordButton.disabled);
+            this.toggleRecording();
+        });
+        this.startButton.addEventListener('click', () => {
+            console.log('Start button clicked');
+            this.startSession();
+        });
         this.stopButton.addEventListener('click', () => this.stopSession());
         this.clearButton.addEventListener('click', () => this.clearAll());
         this.saveButton.addEventListener('click', () => this.saveResults());
@@ -67,22 +80,43 @@ class MedAIApp {
         this.sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
     }
 
+    initializeUI() {
+        // Disable record button initially - user must start session first
+        this.recordButton.disabled = true;
+        this.stopButton.disabled = true;
+        this.saveButton.disabled = true;
+        this.downloadButton.disabled = true;
+
+        console.log('UI initialized - record button disabled:', this.recordButton.disabled);
+
+        // Set initial status
+        this.updateStatus('Bereit für Sitzung', 'ready');
+    }
+
     async startSession() {
         try {
+            console.log('Starting session...');
             this.encounterId = this.encounterIdInput.value.trim();
             if (!this.encounterId) {
                 this.showMessage('Bitte geben Sie eine Encounter ID ein.', 'error');
                 return;
             }
 
+            console.log('Encounter ID:', this.encounterId);
+
             // Initialize WebSocket connection
+            console.log('Connecting WebSocket...');
             await this.connectWebSocket();
+            console.log('WebSocket connected');
 
             // Initialize audio recording
+            console.log('Initializing audio...');
             await this.initializeAudio();
+            console.log('Audio initialized');
 
             this.startButton.disabled = true;
             this.recordButton.disabled = false;
+            console.log('Record button enabled:', !this.recordButton.disabled);
             this.updateStatus('Bereit für Aufnahme', 'ready');
 
             this.showMessage('Sitzung gestartet. Sie können jetzt mit der Aufnahme beginnen.', 'success');
@@ -98,6 +132,7 @@ class MedAIApp {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}?user_id=demo_user&organization_id=demo_org`;
 
+            console.log('Attempting WebSocket connection to:', wsUrl);
             this.websocket = new WebSocket(wsUrl);
 
             this.websocket.onopen = () => {
@@ -121,6 +156,7 @@ class MedAIApp {
 
             this.websocket.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                console.error('WebSocket connection failed - check if server is running');
                 reject(new Error('WebSocket connection failed'));
             };
         });
@@ -145,11 +181,15 @@ class MedAIApp {
                 break;
 
             case 'audio_received':
+                console.log('Audio chunk received:', message.data);
                 this.updateProgress(message.data.total_size);
                 break;
 
             case 'partial_transcription':
+                console.log('Partial transcription received:', message.data);
+                console.log('Calling updateTranscript with:', message.data.transcription);
                 this.updateTranscript(message.data.transcription, false);
+                console.log('updateTranscript call completed');
                 break;
 
             case 'processing_started':
@@ -172,6 +212,7 @@ class MedAIApp {
 
     async initializeAudio() {
         try {
+            console.log('Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     sampleRate: 16000,
@@ -180,11 +221,14 @@ class MedAIApp {
                     noiseSuppression: true
                 }
             });
+            console.log('Microphone access granted');
 
+            console.log('Creating MediaRecorder...');
             this.mediaRecorder = new MediaRecorder(stream, {
                 mimeType: 'audio/webm;codecs=opus',
                 audioBitsPerSecond: 16000
             });
+            console.log('MediaRecorder created successfully');
 
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -204,15 +248,38 @@ class MedAIApp {
     }
 
     async toggleRecording() {
+        console.log('toggleRecording called, mediaRecorder:', !!this.mediaRecorder, 'isRecording:', this.isRecording);
+
+        // Check if session is started
+        if (!this.mediaRecorder) {
+            console.log('No mediaRecorder, showing error message');
+            this.showMessage('Bitte starten Sie zuerst eine Sitzung mit dem "Sitzung starten" Button.', 'error');
+            return;
+        }
+
         if (!this.isRecording) {
+            console.log('Starting recording...');
             await this.startRecording();
         } else {
+            console.log('Stopping recording...');
             this.stopRecording();
         }
     }
 
     async startRecording() {
         try {
+            // Check if mediaRecorder is initialized
+            if (!this.mediaRecorder) {
+                this.showMessage('Bitte starten Sie zuerst eine Sitzung.', 'error');
+                return;
+            }
+
+            // Check if WebSocket is connected
+            if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                this.showMessage('WebSocket-Verbindung nicht verfügbar. Bitte starten Sie eine neue Sitzung.', 'error');
+                return;
+            }
+
             this.audioChunks = [];
             this.startTime = Date.now();
             this.chunkCount = 0;
@@ -309,16 +376,30 @@ class MedAIApp {
     }
 
     updateTranscript(text, isFinal = false) {
+        console.log('updateTranscript called with:', { text, isFinal, element: this.transcriptText });
+
+        if (!this.transcriptText) {
+            console.error('transcriptText element not found!');
+            return;
+        }
+
         if (isFinal) {
             this.transcriptText.textContent = text;
+            console.log('Final transcript set to:', text);
         } else {
             this.transcriptText.textContent = text + '...';
+            console.log('Partial transcript set to:', text + '...');
         }
+
+        // Force a visual update
+        this.transcriptText.style.display = 'none';
+        this.transcriptText.offsetHeight; // Trigger reflow
+        this.transcriptText.style.display = '';
     }
 
     updateEntities(entities) {
         if (!entities || entities.length === 0) {
-            this.entitiesText.innerHTML = '<em>Keine medizinischen Entitäten gefunden.</em>';
+            this.entitiesText.innerHTML = '<em>Keine physiotherapeutischen Entitäten gefunden.</em>';
             return;
         }
 
@@ -362,6 +443,10 @@ class MedAIApp {
             'hauptbeschwerden': 'Hauptbeschwerden',
             'aktuelle_symptome': 'Aktuelle Symptome',
             'medizinische_vorgeschichte': 'Medizinische Vorgeschichte',
+            'schmerzanalyse': 'Schmerzanalyse',
+            'bewegungseinschraenkungen': 'Bewegungseinschränkungen',
+            'funktionelle_einschraenkungen': 'Funktionelle Einschränkungen',
+            'therapieziele': 'Therapieziele',
             'medikamente': 'Medikamente',
             'allergien': 'Allergien',
             'soziale_angelegenheiten': 'Soziale Angelegenheiten',
@@ -417,8 +502,8 @@ class MedAIApp {
 
     clearAll() {
         this.transcriptText.textContent = 'Transkription wird hier angezeigt...';
-        this.entitiesText.innerHTML = 'Medizinische Entitäten werden hier angezeigt...';
-        this.summaryText.innerHTML = 'Klinische Zusammenfassung wird hier angezeigt...';
+        this.entitiesText.innerHTML = 'Physiotherapeutische Entitäten werden hier angezeigt...';
+        this.summaryText.innerHTML = 'Physiotherapeutische Zusammenfassung wird hier angezeigt...';
 
         this.durationValue.textContent = '0';
         this.chunksValue.textContent = '0';
@@ -430,6 +515,12 @@ class MedAIApp {
         this.downloadButton.disabled = true;
 
         this.lastResults = null;
+
+        // Reset recording state
+        this.isRecording = false;
+        this.recordButton.classList.remove('recording');
+        this.recordText.textContent = 'Aufnahme starten';
+        this.stopButton.disabled = true;
 
         this.showMessage('Alle Daten gelöscht', 'success');
     }

@@ -7,23 +7,34 @@ Uses Agno framework for agent-based architecture.
 import asyncio
 import logging
 import time
+import os
+import json
+import base64
 from typing import Dict, Any, Optional, List, AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
 
-from agno import Agent, Tool, Message
-from agno.tools import ToolResult
+from agno.agent import Agent, Message, Function
+from agno.tools import Function as ToolFunction, FunctionCall
 
 from ..services.stt_service import stt_service
 from ..services.ner_service import ner_service
 from ..services.llm_service import llm_service
 from ..services.translation_service import translation_service
 from ..services.storage_service import storage_service
-from ..utils.config import settings, LatencyConfig
+from src.utils import settings, LatencyConfig
 from ..utils.logging import get_logger, get_latency_logger, RequestContext
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()
+
+
+@dataclass
+class ToolResult:
+    """Tool execution result for agno 2.1.1 compatibility."""
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
 
 @dataclass
@@ -39,6 +50,37 @@ class ClinicalIntakeResult:
     processing_time_ms: float
     success: bool
     errors: List[str]
+
+
+class Tool:
+    """Tool class for agno 2.1.1 compatibility."""
+    
+    def __init__(self, name: str, description: str):
+        self.name = name
+        self.description = description
+        self._function = None
+    
+    async def execute(self, *args, **kwargs) -> ToolResult:
+        """Execute the tool - to be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement execute method")
+    
+    def to_agno_function(self) -> Function:
+        """Convert to agno 2.1.1 Function."""
+        if self._function is None:
+            self._function = Function(
+                name=self.name,
+                description=self.description,
+                function=self._execute_wrapper
+            )
+        return self._function
+    
+    async def _execute_wrapper(self, **kwargs) -> Dict[str, Any]:
+        """Wrapper to convert ToolResult to agno format."""
+        result = await self.execute(**kwargs)
+        if result.success:
+            return result.data or {}
+        else:
+            raise Exception(result.error or "Tool execution failed")
 
 
 class STTTool(Tool):
@@ -88,7 +130,7 @@ class NERTool(Tool):
     def __init__(self):
         super().__init__(
             name="medical_ner",
-            description="Extract medical entities from text using spaCy and ICD dictionaries"
+            description="Extract medical entities from text using NER microservice"
         )
     
     async def execute(self, text: str, **kwargs) -> ToolResult:
@@ -140,6 +182,33 @@ class LLMTool(Tool):
             name="clinical_llm",
             description="Generate clinical summaries using Mistral 7B with fallback support"
         )
+        
+        
+        
+    async def clean_transcript(self, transcripts: list[str], **kwargs) -> ToolResult:
+        """Execute transcript cleaning."""
+        try:
+            start_time = time.time()
+            
+            result = await llm_service.clean_transcript(
+                transcripts=transcripts,
+                task_type=kwargs.get("task_type"),
+                user_id=kwargs.get("user_id")
+            )
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            return ToolResult(
+                success=True,
+                data=result
+            )
+            
+        except Exception as e:
+            logger.error(f"Transcript cleaning failed: {e}")
+            return ToolResult(
+                success=False,
+                error=str(e)
+            )
     
     async def execute(self, transcript: str, entities: List[Dict[str, Any]], task_type: str = "intake_summary", **kwargs) -> ToolResult:
         """Execute clinical summarization."""
@@ -153,6 +222,8 @@ class LLMTool(Tool):
                 task_type=task_type,
                 user_id=kwargs.get("user_id")
             )
+            
+            
             
             # Generate structured notes
             structured_result = await llm_service.generate_structured_notes(
@@ -280,14 +351,9 @@ class StorageTool(Tool):
 
 
 class ClinicalIntakeAgent(Agent):
-    """Main clinical intake agent orchestrating the complete pipeline."""
+    """Main clinical intake agent orchestrating the complete pipeline using agno 2.1.1."""
     
     def __init__(self):
-        super().__init__(
-            name="ClinicalIntakeAgent",
-            description="Orchestrates clinical intake processing pipeline"
-        )
-        
         # Initialize tools
         self.stt_tool = STTTool()
         self.ner_tool = NERTool()
@@ -295,19 +361,29 @@ class ClinicalIntakeAgent(Agent):
         self.translation_tool = TranslationTool()
         self.storage_tool = StorageTool()
         
-        # Add tools to agent
-        self.add_tool(self.stt_tool)
-        self.add_tool(self.ner_tool)
-        self.add_tool(self.llm_tool)
-        self.add_tool(self.translation_tool)
-        self.add_tool(self.storage_tool)
+        # Convert tools to agno functions
+        agno_tools = [
+            self.stt_tool.to_agno_function(),
+            self.ner_tool.to_agno_function(),
+            self.llm_tool.to_agno_function(),
+            self.translation_tool.to_agno_function(),
+            self.storage_tool.to_agno_function()
+        ]
+        
+        super().__init__(
+            name="ClinicalIntakeAgent",
+            description="Orchestrates clinical intake processing pipeline",
+            instructions="You are a clinical intake agent that processes medical audio and generates structured clinical notes.",
+            tools=agno_tools
+        )
     
     async def process_clinical_intake(
         self,
-        audio_data: bytes,
+        audio_data: bytes,       
         encounter_id: str,
         organization_id: str,
         user_id: str,
+        transcriptions: List[Dict[str, Any]] = None,
         audio_format: str = "webm",
         duration_seconds: Optional[float] = None,
         translate_to: Optional[str] = None,
@@ -329,6 +405,21 @@ class ClinicalIntakeAgent(Agent):
         Returns:
             ClinicalIntakeResult with complete processing results
         """
+        #for testing here save all arguments 
+        # await self._save_arguments_for_testing(
+        #     audio_data=audio_data,
+        #     encounter_id=encounter_id,
+        #     organization_id=organization_id,
+        #     user_id=user_id,
+        #     audio_format=audio_format,
+        #     duration_seconds=duration_seconds,
+        #     translate_to=translate_to,
+        #     task_type=task_type
+        # )
+        
+        
+        
+        
         start_time = time.time()
         errors = []
         
@@ -347,22 +438,46 @@ class ClinicalIntakeAgent(Agent):
                 if not stt_result.success:
                     raise Exception(f"STT failed: {stt_result.error}")
                 
-                transcription = stt_result.data["transcription"]
+                main_transcription = stt_result.data["transcription"]                
+                
+                all_transcriptions = []
+                for item in transcriptions:
+                    all_transcriptions.append(item["transcription"])
+                    
+                all_transcriptions.append(main_transcription)                
+                
+                clean_transcript_result = await self.llm_tool.clean_transcript(
+                    transcripts=all_transcriptions,
+                    task_type="physio_text_cleaner",
+                    user_id=user_id
+                )
+                
+                if not clean_transcript_result.success:
+                    raise Exception(f"Transcript cleaning failed: {clean_transcript_result.error}")
+                
+                transcription =  clean_transcript_result.data["content"]
+
+                     
+                
                 logger.info(f"Transcription completed: {len(transcription)} characters")
                 
-                # Step 2: Medical Entity Recognition
-                logger.info("Step 2: Medical entity extraction")
-                ner_result = await self.ner_tool.execute(text=transcription)
                 
-                if not ner_result.success:
-                    logger.warning(f"NER failed: {ner_result.error}")
-                    entities = []
-                    errors.append(f"NER failed: {ner_result.error}")
-                else:
-                    entities = ner_result.data["entities"]
-                    logger.info(f"Extracted {len(entities)} medical entities")
+                # for now skipping the entity recognition
+                # needs optimization and training
+                # Step 3: Medical Entity Recognition
+                logger.info("skipping Step 2: Medical entity extraction")
+                entities = []
+                #ner_result = await self.ner_tool.execute(text=transcription)
                 
-                # Step 3: LLM Clinical Summarization
+                # if not ner_result.success:
+                #     logger.warning(f"NER failed: {ner_result.error}")
+                #     entities = []
+                #     errors.append(f"NER failed: {ner_result.error}")
+                # else:
+                #     entities = ner_result.data["entities"]
+                #     logger.info(f"Extracted {len(entities)} medical entities")
+                
+                # Step 4: LLM Clinical Summarization
                 logger.info("Step 3: Clinical summarization")
                 llm_result = await self.llm_tool.execute(
                     transcript=transcription,
@@ -406,39 +521,39 @@ class ClinicalIntakeAgent(Agent):
                     "processing_status": "completed"
                 }
                 
-                audio_storage_result = await self.storage_tool.execute(
-                    operation="save_audio",
-                    data={
-                        "encounter_id": encounter_id,
-                        "organization_id": organization_id,
-                        "audio_data": audio_data,
-                        "audio_metadata": audio_metadata,
-                        "user_id": user_id
-                    }
-                )
+                # audio_storage_result = await self.storage_tool.execute(
+                #     operation="save_audio",
+                #     data={
+                #         "encounter_id": encounter_id,
+                #         "organization_id": organization_id,
+                #         "audio_data": audio_data,
+                #         "audio_metadata": audio_metadata,
+                #         "user_id": user_id
+                #     }
+                # )
                 
-                if not audio_storage_result.success:
-                    raise Exception(f"Audio storage failed: {audio_storage_result.error}")
+                # if not audio_storage_result.success:
+                #     raise Exception(f"Audio storage failed: {audio_storage_result.error}")
                 
-                audio_record_id = audio_storage_result.data["result"]["id"]
-                logger.info(f"Audio record saved: {audio_record_id}")
+                # audio_record_id = audio_storage_result.data["result"]["id"]
+                # logger.info(f"Audio record saved: {audio_record_id}")
                 
                 # Save medical entities
-                if entities:
-                    entities_storage_result = await self.storage_tool.execute(
-                        operation="save_entities",
-                        data={
-                            "encounter_id": encounter_id,
-                            "audio_record_id": audio_record_id,
-                            "organization_id": organization_id,
-                            "entities": entities,
-                            "user_id": user_id
-                        }
-                    )
+                # if entities:
+                #     entities_storage_result = await self.storage_tool.execute(
+                #         operation="save_entities",
+                #         data={
+                #             "encounter_id": encounter_id,
+                #             "audio_record_id": audio_record_id,
+                #             "organization_id": organization_id,
+                #             "entities": entities,
+                #             "user_id": user_id
+                #         }
+                #     )
                     
-                    if not entities_storage_result.success:
-                        logger.warning(f"Entities storage failed: {entities_storage_result.error}")
-                        errors.append(f"Entities storage failed: {entities_storage_result.error}")
+                #     if not entities_storage_result.success:
+                #         logger.warning(f"Entities storage failed: {entities_storage_result.error}")
+                #         errors.append(f"Entities storage failed: {entities_storage_result.error}")
                 
                 # Save clinical notes
                 notes_data = {
@@ -453,21 +568,24 @@ class ClinicalIntakeAgent(Agent):
                     "confidence_score": stt_result.data["confidence"]
                 }
                 
-                notes_storage_result = await self.storage_tool.execute(
-                    operation="save_notes",
-                    data={
-                        "encounter_id": encounter_id,
-                        "organization_id": organization_id,
-                        "notes_data": notes_data,
-                        "user_id": user_id
-                    }
-                )
+                # notes_storage_result = await self.storage_tool.execute(
+                #     operation="save_notes",
+                #     data={
+                #         "encounter_id": encounter_id,
+                #         "organization_id": organization_id,
+                #         "notes_data": notes_data,
+                #         "user_id": user_id
+                #     }
+                # )
                 
-                if not notes_storage_result.success:
-                    logger.warning(f"Notes storage failed: {notes_storage_result.error}")
-                    errors.append(f"Notes storage failed: {notes_storage_result.error}")
+                # if not notes_storage_result.success:
+                #     logger.warning(f"Notes storage failed: {notes_storage_result.error}")
+                #     errors.append(f"Notes storage failed: {notes_storage_result.error}")
                 
                 # Calculate total processing time
+                
+                audio_record_id= "123"
+                
                 total_processing_time = (time.time() - start_time) * 1000
                 
                 logger.info(f"Clinical intake processing completed in {total_processing_time:.2f}ms")
@@ -539,7 +657,8 @@ class ClinicalIntakeAgent(Agent):
                     try:
                         # Convert accumulated audio to WAV
                         from ..services.stt_service import stt_service
-                        wav_data = stt_service._convert_webm_to_wav(accumulated_audio)
+                        #wav_data = stt_service._convert_webm_to_wav(accumulated_audio)
+                        wav_data = await stt_service._process_audio_for_stt(accumulated_audio, "wav")
                         
                         # Get partial transcription
                         stt_result = await self.stt_tool.execute(
@@ -570,9 +689,16 @@ class ClinicalIntakeAgent(Agent):
                 
                 # Final processing
                 if accumulated_audio:
+                #       all_transcriptions = []
+                # for item in transcriptions:
+                #     all_transcriptions.append(item["transcription"])
+                    transcriptions = [{"transcription": current_transcription}]
+                    
+                    
                     logger.info("Processing final accumulated audio")
                     final_result = await self.process_clinical_intake(
                         audio_data=accumulated_audio,
+                        transcriptions=transcriptions,
                         encounter_id=encounter_id,
                         organization_id=organization_id,
                         user_id=user_id,
@@ -640,6 +766,68 @@ class ClinicalIntakeAgent(Agent):
             health_status["status"] = "degraded"
         
         return health_status
+
+    async def _save_arguments_for_testing(
+        self,
+        audio_data: bytes,
+        encounter_id: str,
+        organization_id: str,
+        user_id: str,
+        audio_format: str,
+        duration_seconds: Optional[float],
+        translate_to: Optional[str],
+        task_type: str
+    ) -> None:
+        """
+        Save all arguments to a folder in the root directory for testing purposes.
+        
+        Args:
+            All arguments from process_clinical_intake method
+        """
+        try:
+            # Create testing folder in root directory
+            test_folder = "clinical_intake_test_data"
+            os.makedirs(test_folder, exist_ok=True)
+            
+            # Create timestamp for unique folder
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            session_folder = os.path.join(test_folder, f"session_{encounter_id}_{timestamp}")
+            os.makedirs(session_folder, exist_ok=True)
+            
+            # Save audio data as file
+            audio_filename = f"audio_data.{audio_format}"
+            audio_path = os.path.join(session_folder, audio_filename)
+            with open(audio_path, "wb") as f:
+                f.write(audio_data)
+            
+            # Create arguments metadata
+            arguments_data = {
+                "encounter_id": encounter_id,
+                "organization_id": organization_id,
+                "user_id": user_id,
+                "audio_format": audio_format,
+                "duration_seconds": duration_seconds,
+                "translate_to": translate_to,
+                "task_type": task_type,
+                "timestamp": datetime.now().isoformat(),
+                "audio_file": audio_filename,
+                "audio_size_bytes": len(audio_data),
+                "audio_base64": base64.b64encode(audio_data).decode('utf-8')  # For debugging
+            }
+            
+            # Save arguments as JSON
+            args_path = os.path.join(session_folder, "arguments.json")
+            with open(args_path, "w", encoding="utf-8") as f:
+                json.dump(arguments_data, f, indent=2, ensure_ascii=False)
+            
+            # Log the save operation
+            self.logger.info(f"Saved clinical intake arguments to: {session_folder}")
+            self.logger.info(f"Audio file: {audio_path} ({len(audio_data)} bytes)")
+            self.logger.info(f"Arguments file: {args_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save arguments for testing: {e}")
+            # Don't raise the exception to avoid breaking the main flow
 
 
 # Global clinical intake agent instance

@@ -29,9 +29,26 @@ class CacheManager:
     
     def _make_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate cache key from arguments."""
-        # Create a hash of the arguments
+        # Create a hash of the arguments, handling different data types appropriately
+        processed_args = []
+        for arg in args:
+            if isinstance(arg, bytes):
+                # For bytes objects (like audio data), use their content directly
+                processed_args.append(f"bytes:{len(arg)}:{hashlib.md5(arg).hexdigest()}")
+            elif hasattr(arg, '__dict__') and not isinstance(arg, (str, int, float, bool, list, dict, tuple)):
+                # Skip complex objects like self (STTService instance)
+                continue
+            else:
+                # For other serializable types, use as-is
+                try:
+                    json.dumps(arg)
+                    processed_args.append(arg)
+                except (TypeError, ValueError):
+                    # Skip non-serializable arguments
+                    continue
+        
         key_data = {
-            'args': args,
+            'args': processed_args,
             'kwargs': sorted(kwargs.items()) if kwargs else {}
         }
         key_string = json.dumps(key_data, sort_keys=True)
@@ -128,6 +145,7 @@ def cached(prefix: str, ttl: Optional[int] = None):
             
             # Try to get from cache
             cached_result = cache_manager.get(cache_key)
+            cached_result = None
             if cached_result is not None:
                 return cached_result
             

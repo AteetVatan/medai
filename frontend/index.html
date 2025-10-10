@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>medAI MVP - Klinische Dokumentation</title>
+    <title>medAI MVP - Physiotherapeutische Dokumentation</title>
     <style>
         * {
             margin: 0;
@@ -167,6 +167,8 @@
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
+            display: none;
+            /* Hide the entities container */
         }
 
         .entity-item {
@@ -372,7 +374,7 @@
     <div class="container">
         <div class="header">
             <h1> medAI MVP</h1>
-            <p>Klinische Sprach- und Dokumentationsplattform</p>
+            <p>Physiotherapeutische Sprach- und Dokumentationsplattform</p>
         </div>
 
         <div class="main-content">
@@ -389,9 +391,9 @@
                 <div class="form-group">
                     <label for="taskType">Aufgabentyp:</label>
                     <select id="taskType" class="form-control">
-                        <option value="intake_summary">Aufnahmegespräch</option>
-                        <option value="assessment">Bewertung</option>
-                        <option value="treatment_plan">Behandlungsplan</option>
+                        <option value="intake_summary">Physiotherapeutische Aufnahme</option>
+                        <option value="assessment">Physiotherapeutische Bewertung</option>
+                        <option value="treatment_plan">Physiotherapeutischer Behandlungsplan</option>
                     </select>
                 </div>
 
@@ -453,13 +455,13 @@
 
                 <div id="entitiesContainer" class="entities-container">
                     <div id="entitiesText">
-                        Medizinische Entitäten werden hier angezeigt...
+                        Physiotherapeutische Entitäten werden hier angezeigt...
                     </div>
                 </div>
 
                 <div id="summaryContainer" class="summary-container">
                     <div id="summaryText">
-                        Klinische Zusammenfassung wird hier angezeigt...
+                        Physiotherapeutische Zusammenfassung wird hier angezeigt...
                     </div>
                 </div>
 
@@ -474,7 +476,7 @@
         <div id="messages"></div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 
 </html>

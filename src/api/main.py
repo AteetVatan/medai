@@ -8,10 +8,11 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
 
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
 
@@ -20,6 +21,7 @@ from ..services.storage_service import storage_service
 from ..utils.config import settings
 from ..utils.logging import get_logger, get_compliance_logger, RequestContext
 from ..utils.cache import get_cache_stats
+from .ws import websocket_endpoint
 
 logger = get_logger(__name__)
 compliance_logger = get_compliance_logger()
@@ -98,6 +100,25 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["*"]  # Configure appropriately for production
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# WebSocket endpoint
+@app.websocket("/ws/{session_id}")
+async def websocket_route(websocket: WebSocket, session_id: str, user_id: str = "demo_user", organization_id: str = "demo_org"):
+    """WebSocket endpoint for real-time audio streaming."""
+    await websocket_endpoint(websocket, session_id, user_id, organization_id)
+
+# Root route to serve frontend
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the frontend HTML page."""
+    try:
+        with open("frontend/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend not found")
 
 # Dependency for getting current user (simplified for MVP)
 async def get_current_user() -> Dict[str, str]:

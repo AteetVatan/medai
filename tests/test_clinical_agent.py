@@ -7,6 +7,10 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import asyncio
 import io
+import os
+import json
+import random
+import glob
 
 from src.agents.clinical_intake_agent import (
     ClinicalIntakeAgent, 
@@ -493,6 +497,123 @@ class TestStorageTool:
         
         assert result.success is False
         assert "Unknown storage operation" in result.error
+
+    async def test_process_clinical_intake_with_real_test_data(self, agent_instance):
+        """Test process_clinical_intake using real saved test data."""
+        # Find all test data folders
+        test_data_folder = "clinical_intake_test_data"
+        if not os.path.exists(test_data_folder):
+            pytest.skip(f"No test data folder found at {test_data_folder}")
+        
+        # Get all session folders
+        session_folders = glob.glob(os.path.join(test_data_folder, "session_*"))
+        if not session_folders:
+            pytest.skip(f"No session folders found in {test_data_folder}")
+        
+        # Pick a random session folder
+        random_session_folder = random.choice(session_folders)
+        print(f"Using test data from: {random_session_folder}")
+        
+        # Load arguments.json
+        args_file = os.path.join(random_session_folder, "arguments.json")
+        if not os.path.exists(args_file):
+            pytest.skip(f"No arguments.json found in {random_session_folder}")
+        
+        with open(args_file, 'r', encoding='utf-8') as f:
+            args_data = json.load(f)
+        
+        # Load audio data
+        audio_file = os.path.join(random_session_folder, args_data["audio_file"])
+        if not os.path.exists(audio_file):
+            pytest.skip(f"No audio file found: {audio_file}")
+        
+        with open(audio_file, 'rb') as f:
+            audio_data = f.read()
+        
+        # Mock all service responses
+        with patch.object(stt_service, 'transcribe_audio') as mock_stt, \
+             patch.object(ner_service, 'extract_entities') as mock_ner, \
+             patch.object(llm_service, 'generate_clinical_summary') as mock_llm, \
+             patch.object(llm_service, 'generate_structured_notes') as mock_structured, \
+             patch.object(storage_service, 'save_audio_record') as mock_save_audio, \
+             patch.object(storage_service, 'save_medical_entities') as mock_save_entities, \
+             patch.object(storage_service, 'save_clinical_notes') as mock_save_notes:
+            
+            # Configure mocks with realistic responses
+            mock_stt.return_value = {
+                "text": "Der Patient klagt über Kopfschmerzen und Schwindel. Die Symptome bestehen seit 3 Tagen.",
+                "confidence": 0.95,
+                "model": "whisper-hf",
+                "fallback_used": False
+            }
+            
+            mock_ner.return_value = [
+                MagicMock(text="Kopfschmerzen", label="SYMPTOM", start=15, end=27, 
+                         confidence=0.9, icd_code="R51", icd_description="Kopfschmerz",
+                         normalized_text="kopfschmerzen", category="symptom"),
+                MagicMock(text="Schwindel", label="SYMPTOM", start=32, end=40, 
+                         confidence=0.85, icd_code="H81", icd_description="Schwindel",
+                         normalized_text="schwindel", category="symptom")
+            ]
+            
+            mock_llm.return_value = {
+                "content": "Der Patient berichtet über Kopfschmerzen und Schwindel seit 3 Tagen. Die Symptome sind kontinuierlich und beeinträchtigen die täglichen Aktivitäten.",
+                "model": "mistral-7b",
+                "fallback_used": False
+            }
+            
+            mock_structured.return_value = {
+                "chief_complaint": "Kopfschmerzen und Schwindel",
+                "history_of_present_illness": "Symptome bestehen seit 3 Tagen",
+                "symptoms": ["Kopfschmerzen", "Schwindel"],
+                "duration": "3 Tage",
+                "severity": "moderat",
+                "model": "mistral-7b",
+                "fallback_used": False
+            }
+            
+            # Mock storage service responses
+            mock_save_audio.return_value = "audio_record_123"
+            mock_save_entities.return_value = "entities_record_123"
+            mock_save_notes.return_value = "notes_record_123"
+            
+            # Call the method with real test data
+            result = await agent_instance.process_clinical_intake(
+                audio_data=audio_data,
+                encounter_id=args_data["encounter_id"],
+                organization_id=args_data["organization_id"],
+                user_id=args_data["user_id"],
+                audio_format=args_data["audio_format"],
+                duration_seconds=args_data.get("duration_seconds"),
+                translate_to=args_data.get("translate_to"),
+                task_type=args_data["task_type"]
+            )
+            
+            # Verify the result
+            assert isinstance(result, ClinicalIntakeResult)
+            assert result.encounter_id == args_data["encounter_id"]
+            assert result.success is True
+            assert result.transcription is not None
+            assert len(result.entities) > 0
+            assert result.clinical_summary is not None
+            assert result.structured_notes is not None
+            assert result.processing_time_ms > 0
+            assert len(result.errors) == 0
+            
+            # Verify all services were called
+            mock_stt.assert_called_once()
+            mock_ner.assert_called_once()
+            mock_llm.assert_called_once()
+            mock_structured.assert_called_once()
+            mock_save_audio.assert_called_once()
+            mock_save_entities.assert_called_once()
+            mock_save_notes.assert_called_once()
+            
+            print(f"✅ Test passed with real data from: {random_session_folder}")
+            print(f"   - Audio size: {len(audio_data)} bytes")
+            print(f"   - Encounter ID: {result.encounter_id}")
+            print(f"   - Processing time: {result.processing_time_ms:.2f}ms")
+            print(f"   - Entities found: {len(result.entities)}")
 
 
 @pytest.mark.asyncio

@@ -57,69 +57,103 @@ class LLMService:
     
     def _load_system_prompts(self) -> Dict[str, str]:
         """Load system prompts for different clinical tasks."""
-        return {
-            "intake_summary": """Du bist ein erfahrener medizinischer Assistent. Deine Aufgabe ist es, klinische Aufnahmegespräche zu strukturieren und zusammenzufassen.
+        return { "physio_text_cleaner": """
+Du bist ein erfahrener deutscher Physiotherapeut mit klinischer Dokumentationserfahrung.
+Deine Aufgabe ist es, mehrere unklare oder fehlerhafte Transkripte aus Sprachaufnahmen zu einem
+einheitlichen, sauberen und fachlich korrekten physiotherapeutischen Text zu bereinigen und kurz zusammenzufassen.
+
+REGELN:
+- Fasse alle übermittelten Teiltranskripte (Text- oder Bildliste) zu einem zusammenhängenden Therapiesatz zusammen.
+- Bereinige Grammatik, Ausdruck und medizinische Terminologie.
+- Verwende ausschließlich korrekte physiotherapeutische Fachsprache und übliche Abkürzungen (z. B. MLD, KG, MT, PNF, BWS, LWS, HWS, Mobilisation, Kräftigung, Dehnung, Stabilisation).
+- Ersetze unklare oder falsch erkannte Wörter durch plausible physiotherapeutische Begriffe.
+- Fasse die therapeutischen Inhalte präzise zusammen: Welche Technik, welche Körperregion, welches Ziel?
+- Gib **nur den bereinigten und zusammengefassten Satz oder kurzen Absatz** zurück – keine Aufzählungen, keine Erklärungen, keine Zusatztexte.
+
+ZIEL:
+Ein kurzer, professioneller physiotherapeutischer Behandlungsvermerk im Stil:  
+„MLD an den Beinen, Kräftigung, WTT-Technik mit Langerbeugelsohle, Mobilisation der Schulter beidseits, PNF für die rechte Schulter und Übungen mit dem Theraband.“
+""",
+"intake_summary": """Du bist ein erfahrener Physiotherapeut. Deine Aufgabe ist es, physiotherapeutische Aufnahmegespräche zu strukturieren und zusammenzufassen.
 
 WICHTIGE REGELN:
-- Verwende NUR medizinische Fachsprache
+- Verwende NUR physiotherapeutische Fachsprache
 - Strukturiere die Informationen klar und präzise
 - Verwende KEINE persönlichen Identifikationsmerkmale (PII)
-- Fokussiere auf medizinisch relevante Informationen
-- Verwende deutsche medizinische Terminologie
+- Fokussiere auf bewegungs- und funktionsrelevante Informationen
+- Verwende deutsche physiotherapeutische Terminologie
 
 Struktur:
 1. HAUPTBESCHWERDEN
-2. AKTUELLE SYMPTOME
-3. MEDIZINISCHE VORGESCHICHTE
-4. MEDIKAMENTE
-5. ALLERGIEN
-6. SOZIALE ANGELEGENHEITEN
-7. BEFUNDE
-8. DIAGNOSE/VERDACHT
-9. BEHANDLUNGSPLAN
-10. NÄCHSTE SCHRITTE""",
+2. SCHMERZANALYSE
+3. BEWEGUNGSEINSCHRÄNKUNGEN
+4. FUNKTIONELLE EINSCHRÄNKUNGEN
+5. MEDIZINISCHE VORGESCHICHTE
+6. MEDIKAMENTE
+7. ALLERGIEN
+8. BEFUNDE
+9. THERAPIEZIELE
+10. BEHANDLUNGSPLAN""",
 
-            "assessment": """Du bist ein klinischer Psychologe. Erstelle eine strukturierte psychologische Einschätzung basierend auf dem Gespräch.
-
-Struktur:
-1. PRÄSENTIERENDE PROBLEME
-2. PSYCHOLOGISCHE SYMPTOME
-3. RISIKOFAKTOREN
-4. SCHUTZFAKTOREN
-5. DIFFERENTIALDIAGNOSE
-6. BEHANDLUNGSEMPFEHLUNGEN
-7. PROGNOSE""",
-
-            "treatment_plan": """Du bist ein Therapeut. Erstelle einen strukturierten Behandlungsplan.
+            "assessment": """Du bist ein erfahrener Physiotherapeut. Erstelle eine strukturierte physiotherapeutische Einschätzung basierend auf dem Gespräch.
 
 Struktur:
-1. BEHANDLUNGSZIELE
-2. THERAPEUTISCHE INTERVENTIONEN
-3. ZEITRAHMEN
-4. MESSBARE ZIELE
-5. HOMEWORK/ÜBUNGEN
-6. NÄCHSTE TERMINE"""
+1. HAUPTBESCHWERDEN
+2. BEWEGUNGSEINSCHRÄNKUNGEN
+3. SCHMERZANALYSE
+4. FUNKTIONELLE EINSCHRÄNKUNGEN
+5. BEFUNDE
+6. BEHANDLUNGSPLAN
+7. THERAPIEZIELE""",
+
+            "treatment_plan": """Du bist ein erfahrener Physiotherapeut. Erstelle einen strukturierten physiotherapeutischen Behandlungsplan.
+
+Struktur:
+1. THERAPIEZIELE
+2. MANUELLE THERAPIE
+3. BEWEGUNGSTHERAPIE
+4. ÜBUNGSPROGRAMM
+5. HILFSMITTEL
+6. ZEITRAHMEN
+7. NÄCHSTE TERMINE"""
         }
     
     def _strip_pii(self, text: str) -> str:
-        """Strip personally identifiable information from text."""
+        """Strip personally identifiable information (PII) from German medical text."""
         if not settings.enable_pii_stripping:
             return text
-        
-        # Common German PII patterns
+
+        # German PII patterns — conservative & context-aware
         pii_patterns = [
-            (r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', '[NAME]'),  # Names
-            (r'\b\d{1,2}\.\d{1,2}\.\d{4}\b', '[DATUM]'),  # Dates
-            (r'\b\d{5}\b', '[PLZ]'),  # Postal codes
-            (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]'),  # Email
-            (r'\b\d{3,4}[-\s]?\d{3,4}[-\s]?\d{3,4}\b', '[TELEFON]'),  # Phone
-            (r'\b[A-Za-z0-9]{8,}\b', '[ID]'),  # IDs
+            # Names (First + Last with capital initials)
+            (r'\b[A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+\b', '[NAME]'),
+            
+            # Dates: DD.MM.YYYY or DD.MM.YY
+            (r'\b\d{1,2}\.\d{1,2}\.\d{2,4}\b', '[DATUM]'),
+            
+            # Postal codes (PLZ)
+            (r'\b\d{5}\b', '[PLZ]'),
+            
+            # Email addresses
+            (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '[EMAIL]'),
+            
+            # Phone numbers (+49 or local formats)
+            (r'\b(?:\+49|0)\s?\d{2,4}[\s/-]?\d{3,4}[\s/-]?\d{3,4}\b', '[TELEFON]'),
+            
+            # German Personal ID or Insurance number (alphanumeric + digits)
+            (r'\b[A-Z]{1,2}\d{8,10}\b', '[ID]'),
+            
+            # IBAN numbers
+            (r'\bDE\d{20}\b', '[IBAN]'),
+            
+            # Street addresses (e.g., Musterstraße 12)
+            (r'\b[A-ZÄÖÜ][a-zäöüß]+straße \d{1,3}\b', '[ADRESSE]'),
         ]
-        
+
         stripped_text = text
         for pattern, replacement in pii_patterns:
             stripped_text = re.sub(pattern, replacement, stripped_text)
-        
+
         return stripped_text
     
     @cached("llm_mistral", ttl=1800)  # Cache for 30 minutes
@@ -127,6 +161,34 @@ Struktur:
     async def _call_mistral(self, messages: List[Dict[str, str]], max_tokens: int = 2048) -> Dict[str, Any]:
         """Call Mistral 7B API."""
         try:
+            
+            
+            # payload = {
+            #     "model": ModelConfig.MISTRAL_MODEL,
+            #     "messages": messages,
+            #     "temperature": ModelConfig.TEMPERATURE,
+            #     "top_p": ModelConfig.TOP_P,
+            #     "max_tokens": min(max_tokens, ModelConfig.MAX_TOKENS_LLM),
+            #     "stream": False
+            # }
+            
+            # response = await self.mistral_client.post(
+            #     settings.mistral_endpoint,
+            #     json=payload
+            # )
+            # response.raise_for_status()
+            
+            # result = response.json()
+            
+            # return {
+            #     "content": result["choices"][0]["message"]["content"],
+            #     "model": "mistral-7b",
+            #     "provider": "mistral",
+            #     "usage": result.get("usage", {}),
+            #     "fallback_used": False
+            # }
+            
+            
             payload = {
                 "model": ModelConfig.MISTRAL_MODEL,
                 "messages": messages,
@@ -135,22 +197,36 @@ Struktur:
                 "max_tokens": min(max_tokens, ModelConfig.MAX_TOKENS_LLM),
                 "stream": False
             }
+
+            # payload = {
+            #     "model": ModelConfig.MISTRAL_MODEL,
+            #     "messages": [
+            #         {"role": "user", "content": "Hello"}
+            #     ],
+            #     "temperature": 0.0,
+            #     "top_p": 1.0,
+            #     "max_tokens": 32,
+            #     "stream": False
+            # }
             
-            response = await self.mistral_client.post(
-                settings.mistral_endpoint,
-                json=payload
-            )
-            response.raise_for_status()
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(settings.request_timeout),
+                headers={"Authorization": f"Bearer {settings.mistral_api_key}"}
+            ) as client:
+                response = await client.post(settings.mistral_endpoint, json=payload)
+                response.raise_for_status()
+                result = response.json()
+                return {
+                    "content": result["choices"][0]["message"]["content"],
+                    "model": "mistral-7b",
+                    "provider": "mistral",
+                    "usage": result.get("usage", {}),
+                    "fallback_used": False
+                }
             
-            result = response.json()
             
-            return {
-                "content": result["choices"][0]["message"]["content"],
-                "model": "mistral-7b",
-                "provider": "mistral",
-                "usage": result.get("usage", {}),
-                "fallback_used": False
-            }
+            
+            
             
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
@@ -310,7 +386,74 @@ Struktur:
         except Exception as e:
             logger.error(f"LLM generation failed: {str(e)}")
             raise
+    
+    
+    
+    async def clean_transcript(
+    self,
+    transcripts: list[str],
+    task_type: str = "physio_text_cleaner",
+    user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Clean and standardize a physiotherapy transcript using Mistral only.
 
+        Args:
+            transcript: Raw or unstructured speech-to-text transcript
+            task_type: Task type to select the correct system prompt
+            user_id: Optional user ID for audit logging
+
+        Returns:
+            Dict with cleaned and standardized physiotherapy transcript
+        """
+        try:
+            # Step 1: Remove personal identifiable information (PII)
+            clean_transcripts = []
+            for transcript in transcripts:
+                clean_transcript = self._strip_pii(transcript)
+                clean_transcripts.append(clean_transcript)
+
+            combined_text = " ".join(clean_transcripts)
+            
+            
+            # Step 2: Load system prompt (use physio_text_cleaner as default)
+            system_prompt = self._system_prompts.get(
+                task_type,
+                self._system_prompts["physio_text_cleaner"]
+            )
+
+            # Step 3: Build user instruction (no entity context)
+            user_message = f"""
+            Hier sind mehrere unklare oder fehlerhafte Teiltranskripte:
+
+            {combined_text}
+
+            Bitte bereinige und fasse sie zu einem korrekten physiotherapeutischen Therapietext zusammen.
+            """
+    
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ]
+
+            # Step 4: Call Mistral (primary and only model)
+            result = await self._call_mistral(messages)
+
+            # Step 5: Log model interaction (optional audit)
+            self._log_llm_interaction(
+                "mistral-7b",
+                len(user_message),
+                len(result.get("content", "")),
+                user_id
+            )
+
+            return result
+        except Exception as e:
+            logger.error(f"Transcript cleaning failed: {e}")
+            raise Exception(f"Transcript cleaning failed: {e}")
+
+    
     async def generate_clinical_summary(
         self,
         transcript: str,
@@ -332,7 +475,7 @@ Struktur:
         """
         try:
             # Strip PII from transcript
-            clean_transcript = self._strip_pii(transcript)
+            #clean_transcript = self._strip_pii(transcript)
             
             # Prepare messages
             system_prompt = self._system_prompts.get(task_type, self._system_prompts["intake_summary"])
@@ -342,7 +485,7 @@ Struktur:
             
             user_message = f"""Transkript des Patientengesprächs:
 
-{clean_transcript}
+{transcript}
 
 Extrahierte medizinische Entitäten:
 {entity_context}
@@ -434,29 +577,30 @@ Bitte erstelle eine strukturierte klinische Zusammenfassung basierend auf dem ob
             Dict with structured notes
         """
         try:
-            system_prompt = """Du bist ein medizinischer Assistent. Konvertiere die klinische Zusammenfassung in strukturierte Notizen.
+            system_prompt = """Du bist ein erfahrener Physiotherapeut. Konvertiere die physiotherapeutische Zusammenfassung in strukturierte Notizen.
 
 WICHTIGE REGELN:
 - Verwende JSON-Format
 - Strukturiere alle Informationen hierarchisch
-- Verwende deutsche medizinische Terminologie
+- Verwende deutsche physiotherapeutische Terminologie
 - Stelle sicher, dass alle Felder korrekt ausgefüllt sind
 
 JSON-Struktur:
 {
   "hauptbeschwerden": [],
-  "aktuelle_symptome": [],
+  "schmerzanalyse": {},
+  "bewegungseinschraenkungen": [],
+  "funktionelle_einschraenkungen": [],
   "medizinische_vorgeschichte": [],
   "medikamente": [],
   "allergien": [],
-  "soziale_angelegenheiten": {},
   "befunde": {},
-  "diagnose_verdacht": [],
+  "therapieziele": [],
   "behandlungsplan": {},
   "naechste_schritte": []
 }"""
 
-            user_message = f"""Konvertiere diese klinische Zusammenfassung in strukturierte JSON-Notizen:
+            user_message = f"""Konvertiere diese physiotherapeutische Zusammenfassung in strukturierte JSON-Notizen:
 
 {clinical_summary}"""
 
@@ -511,12 +655,12 @@ JSON-Struktur:
             "providers": {},
             "timestamp": time.time()
         }
-        
+        return health_status
         # Test Mistral
         try:
             start_time = time.time()
             test_messages = [
-                {"role": "system", "content": "Du bist ein medizinischer Assistent."},
+                {"role": "system", "content": "Du bist ein erfahrener Physiotherapeut."},
                 {"role": "user", "content": "Test"}
             ]
             await self._call_mistral(test_messages, max_tokens=10)
@@ -535,7 +679,7 @@ JSON-Struktur:
         try:
             start_time = time.time()
             test_messages = [
-                {"role": "system", "content": "Du bist ein medizinischer Assistent."},
+                {"role": "system", "content": "Du bist ein erfahrener Physiotherapeut."},
                 {"role": "user", "content": "Test"}
             ]
             await self._call_openrouter_fallback(test_messages, max_tokens=10)
