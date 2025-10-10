@@ -39,6 +39,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Verify critical files exist
+RUN ls -la /app/start_dev.py && \
+    ls -la /app/.env || echo "Warning: .env file not found"
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app && \
     chown -R app:app /app

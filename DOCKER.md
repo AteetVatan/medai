@@ -47,7 +47,7 @@ The Docker container runs the application in production mode with the following 
 
 ## Environment Variables
 
-Make sure to create a `.env` file in your project root with the required configuration:
+**IMPORTANT**: Make sure to create a `.env` file in your project root with the required configuration:
 
 ```bash
 # Copy the example environment file
@@ -55,6 +55,8 @@ cp env.example .env
 
 # Edit the .env file with your API keys and settings
 ```
+
+The `.env` file is required for the application to start properly. Without it, the container will fail to start.
 
 ## Health Check
 

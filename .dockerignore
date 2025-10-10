@@ -47,7 +47,6 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-.env
 .env.local
 .env.development
 .env.test
@@ -69,7 +68,6 @@ docker-compose*
 .dockerignore
 
 # Development files
-start_dev.py
 dev_*.py
 
 # Temporary files
