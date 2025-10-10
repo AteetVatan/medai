@@ -53,9 +53,8 @@ def render_report_pdf(report: ClinicalReport) -> Tuple[str, bytes]:
     pdf_bytes = _render_with_weasyprint(html)
     if pdf_bytes is None:
         pdf_bytes = _render_with_reportlab(html)
-
     if pdf_bytes is None:
-        raise RuntimeError("PDF rendering requires WeasyPrint oder ReportLab.")
+        pdf_bytes = _render_with_builtin_pdf(html)
 
     logger.info("Generated report PDF", extra={"extra_fields": {"filename": filename, "size": len(pdf_bytes)}})
     return filename, pdf_bytes
@@ -122,3 +121,66 @@ def _strip_html(html: str) -> str:
     stripper = _HTMLStripper()
     stripper.feed(html)
     return stripper.get_text()
+
+
+def _render_with_builtin_pdf(html: str) -> bytes:
+    """Render a very small PDF without third-party dependencies."""
+
+    plain_text = _strip_html(html).strip()
+    if not plain_text:
+        plain_text = "Behandlungsbericht"
+
+    lines = [line.strip() for line in plain_text.splitlines() if line.strip()]
+    if not lines:
+        lines = [plain_text]
+
+    def escape(text: str) -> str:
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    text_commands = ["BT", "/F1 11 Tf", "72 800 Td"]
+    for index, line in enumerate(lines):
+        if index > 0:
+            text_commands.append("0 -14 Td")
+        text_commands.append(f"({escape(line)}) Tj")
+    text_commands.append("ET")
+    content_stream = "\n".join(text_commands).encode("utf-8")
+
+    objects: list[bytes] = []
+
+    def add_object(data: bytes | str) -> None:
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        objects.append(data)
+
+    add_object("1 0 obj << /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+    add_object("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+    add_object(
+        "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        "/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
+    )
+    add_object(
+        f"4 0 obj << /Length {len(content_stream)} >>\nstream\n".encode("utf-8")
+        + content_stream
+        + b"\nendstream\nendobj\n"
+    )
+    add_object("5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
+
+    pdf_parts: list[bytes] = [b"%PDF-1.4\n"]
+    offsets = [0]
+    current = len(pdf_parts[0])
+    for obj in objects:
+        offsets.append(current)
+        pdf_parts.append(obj)
+        current += len(obj)
+
+    xref_offset = current
+    xref_entries = [f"xref\n0 {len(objects) + 1}\n".encode("utf-8"), b"0000000000 65535 f \n"]
+    for offset in offsets[1:]:
+        xref_entries.append(f"{offset:010d} 00000 n \n".encode("utf-8"))
+
+    pdf_parts.extend(xref_entries)
+    pdf_parts.append(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode("utf-8")
+    )
+
+    return b"".join(pdf_parts)

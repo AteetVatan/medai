@@ -16,6 +16,7 @@ class MedAIApp {
         this.chunkCount = 0;
         this.totalSize = 0;
         this.latestTranscript = '';
+        this.lastResults = null;
         this.reportManager = null;
         this.isReportMode = false;
 
@@ -866,8 +867,9 @@ class ReportFormManager {
         const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
         switch (key) {
             case 'diagnoses':
-                this.reportData.diagnoses = value ? value.split(/
-+/).map(item => item.trim()).filter(Boolean) : [];
+                this.reportData.diagnoses = value
+                    ? value.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+                    : [];
                 break;
             case 'report_date':
                 this.reportData.report_date = value || this.getToday();
