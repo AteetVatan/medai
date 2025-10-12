@@ -111,7 +111,7 @@ class MedAIApp {
     }
 
     initializeUI() {
-        // Disable record button initially - user must start session first
+        // Disable buttons initially - user must start session first
         this.recordButton.disabled = true;
         this.stopButton.disabled = true;
         this.updateResultsAvailability();
@@ -238,6 +238,11 @@ class MedAIApp {
                 console.log('Session started:', message.data);
                 break;
 
+            case 'recording_started':
+                console.log('Recording started:', message.data);
+                this.updateStatus('Recording started, ready for audio', 'success');
+                break;
+
             case 'audio_received':
                 console.log('Audio chunk received:', message.data);
                 this.updateProgress(message.data.total_size);
@@ -257,6 +262,12 @@ class MedAIApp {
 
             case 'processing_completed':
                 this.handleProcessingCompleted(message.data);
+                break;
+
+            case 'session_ended':
+                console.log('Session ended:', message.data);
+                this.updateStatus('Session ended successfully', 'success');
+                this.resetUI();
                 break;
 
             case 'error':
@@ -338,6 +349,9 @@ class MedAIApp {
                 return;
             }
 
+            // Send start_recording message to clear buffers
+            this.sendWebSocketMessage('start_recording', {});
+
             this.audioChunks = [];
             this.startTime = Date.now();
             this.chunkCount = 0;
@@ -375,8 +389,8 @@ class MedAIApp {
     }
 
     handleRecordingStop() {
-        // Send end session message to trigger final processing
-        this.sendWebSocketMessage('end_session', {});
+        // Send end recording message to trigger processing of current recording
+        this.sendWebSocketMessage('end_recording', {});
     }
 
     async sendAudioChunk(audioBlob) {
@@ -561,21 +575,52 @@ class MedAIApp {
     }
 
     async stopSession() {
+        // Stop any active recording first
+        if (this.mediaRecorder && this.isRecording) {
+            this.stopRecording();
+        }
+
+        // Send end_session message to properly close the session
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendWebSocketMessage('end_session', {});
+            // Don't close WebSocket immediately - let the server handle it
+        } else {
+            // If WebSocket is not available, just reset UI
+            this.resetUI();
+        }
+    }
+
+    resetUI() {
+        // Reset UI state
+        this.startButton.disabled = false;
+        this.recordButton.disabled = true;
+        this.stopButton.disabled = true;
+
+        // Reset recording state
+        this.isRecording = false;
+        this.audioChunks = [];
+        this.chunkCount = 0;
+        this.totalSize = 0;
+        this.latestTranscript = '';
+
+        // Reset UI elements
+        this.recordButton.classList.remove('recording');
+        this.recordText.textContent = 'Aufnahme starten';
+
+        // Stop any timers
+        if (this.durationInterval) {
+            clearInterval(this.durationInterval);
+            this.durationInterval = null;
+        }
+
+        // Close WebSocket if still open
         if (this.websocket) {
             this.websocket.close();
             this.websocket = null;
         }
 
-        if (this.mediaRecorder && this.isRecording) {
-            this.stopRecording();
-        }
-
-        this.startButton.disabled = false;
-        this.recordButton.disabled = true;
-        this.stopButton.disabled = true;
-
-        this.updateStatus('Sitzung beendet', 'ready');
-        this.showMessage('Sitzung beendet', 'success');
+        // Reset status
+        this.updateStatus('Bereit für neue Sitzung', 'ready');
     }
 
     async fillReportFromTranscript() {
