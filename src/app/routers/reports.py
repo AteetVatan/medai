@@ -44,26 +44,31 @@ async def generate_report_pdf(report: ClinicalReport) -> StreamingResponse:
     """Render the submitted report as a downloadable PDF."""
 
     # Debug logging
-    logger.info("PDF endpoint received report", extra={
-        "extra_fields": {
-            "patient_name": report.patient_name,
-            "diagnoses": report.diagnoses,
-            "insurance_type": report.insurance_type.value if report.insurance_type else None,
-            "treatment_outcome": report.treatment_outcome.value if report.treatment_outcome else None,
-            "patient_problem_statement": report.patient_problem_statement,
-            "therapy_status_note": report.therapy_status_note,
-            "follow_up_recommendation": report.follow_up_recommendation
-        }
-    })
+    logger.info(
+        "PDF endpoint received report",
+        extra={
+            "extra_fields": {
+                "patient_name": report.patient_name,
+                "diagnoses": report.diagnoses,
+                "insurance_type": (
+                    report.insurance_type.value if report.insurance_type else None
+                ),
+                "treatment_outcome": (
+                    report.treatment_outcome.value if report.treatment_outcome else None
+                ),
+                "patient_problem_statement": report.patient_problem_statement,
+                "therapy_status_note": report.therapy_status_note,
+                "follow_up_recommendation": report.follow_up_recommendation,
+            }
+        },
+    )
 
     try:
         filename, pdf_bytes = render_report_pdf(report)
-        logger.info("PDF generated successfully", extra={
-            "extra_fields": {
-                "filename": filename,
-                "size": len(pdf_bytes)
-            }
-        })
+        logger.info(
+            "PDF generated successfully",
+            extra={"extra_fields": {"filename": filename, "size": len(pdf_bytes)}},
+        )
     except RuntimeError as exc:
         logger.error("PDF generation failed: %s", exc)
         raise HTTPException(
@@ -72,9 +77,11 @@ async def generate_report_pdf(report: ClinicalReport) -> StreamingResponse:
         ) from exc
 
     headers = {
-        "Content-Disposition": f"attachment; filename=\"{filename}\"",
+        "Content-Disposition": f'attachment; filename="{filename}"',
     }
-    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers
+    )
 
 
 @router.post("/save", response_model=ReportSaveResponse)
@@ -86,7 +93,10 @@ async def save_report(report: ClinicalReport) -> ReportSaveResponse:
     path = _STORAGE_DIR / filename
 
     try:
-        path.write_text(report.model_dump_json(indent=2, exclude_none=True, ensure_ascii=False), encoding="utf-8")
+        path.write_text(
+            report.model_dump_json(indent=2, exclude_none=True, ensure_ascii=False),
+            encoding="utf-8",
+        )
     except OSError as exc:  # pragma: no cover - depends on filesystem state
         logger.error("Failed to persist report: %s", exc)
         raise HTTPException(

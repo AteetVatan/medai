@@ -114,7 +114,9 @@ class ReportSuggestionRequest(BaseModel):
         if self.accumulated_transcriptions:
             segments.extend(self.accumulated_transcriptions)
 
-        combined = "\n".join(segment.strip() for segment in segments if segment and segment.strip())
+        combined = "\n".join(
+            segment.strip() for segment in segments if segment and segment.strip()
+        )
         return combined.strip()
 
     @field_validator("transcript", "transcripts", "accumulated_transcriptions")

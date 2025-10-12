@@ -24,22 +24,22 @@ MedicalEntity = EntityModel
 
 class NERMicroserviceClient:
     """HTTP client for NER microservice."""
-    
+
     def __init__(self, base_url: str = settings.ner_microservice_base_url):
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=30.0)
-    
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
-    
+
     async def extract_entities(self, text: str) -> Dict[str, Any]:
         """Call the /extract endpoint."""
         try:
             response = await self.client.post(
                 f"{self.base_url}/extract",
                 json={"text": text},
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             return response.json()
@@ -56,7 +56,7 @@ class NERMicroserviceClient:
             response = await self.client.post(
                 f"{self.base_url}/extract_batch",
                 json={"texts": texts},
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             return response.json()
@@ -70,18 +70,18 @@ class NERMicroserviceClient:
 
 class MedicalNERService:
     """Medical Named Entity Recognition service using microservice."""
-    
+
     def __init__(self, microservice_url: str = settings.ner_microservice_base_url):
         self.client = NERMicroserviceClient(microservice_url)
-    
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.close()
-    
+
     def _convert_microservice_entity(self, entity_data: Dict[str, Any]) -> EntityModel:
         """Convert microservice entity response to EntityModel."""
         return EntityModel.from_dict(entity_data)
-    
+
     # ---------- extraction ----------
     @monitor_latency("ner_extract", "microservice")
     async def extract_entities(self, text: str) -> List[EntityModel]:
@@ -91,17 +91,17 @@ class MedicalNERService:
         try:
             response = await self.client.extract_entities(text)
             entities = []
-            
+
             for entity_data in response.get("entities", []):
                 entity = self._convert_microservice_entity(entity_data)
                 entities.append(entity)
-            
+
             return entities
 
         except Exception as e:
             logger.error(f"Entity extraction failed: {e}")
             raise
-    
+
     # ---------- batch extraction ----------
     @monitor_latency("ner_extract_batch", "microservice")
     async def extract_entities_batch(self, texts: List[str]) -> List[List[EntityModel]]:
@@ -109,20 +109,20 @@ class MedicalNERService:
         try:
             response = await self.client.extract_entities_batch(texts)
             results = []
-            
+
             for text_entities in response.get("results", []):
                 entities = []
                 for entity_data in text_entities:
                     entity = self._convert_microservice_entity(entity_data)
                     entities.append(entity)
                 results.append(entities)
-            
+
             return results
 
         except Exception as e:
             logger.error(f"Batch entity extraction failed: {e}")
             raise
-    
+
     # ---------- stats / display ----------
     def get_entity_statistics(self, entities: List[EntityModel]) -> Dict[str, Any]:
         stats = {
@@ -137,10 +137,12 @@ class MedicalNERService:
             cat = e.category or "unknown"
             stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
             stats["by_label"][e.label] = stats["by_label"].get(e.label, 0) + 1
-            
+
             if e.source_model:
-                stats["by_source_model"][e.source_model] = stats["by_source_model"].get(e.source_model, 0) + 1
-            
+                stats["by_source_model"][e.source_model] = (
+                    stats["by_source_model"].get(e.source_model, 0) + 1
+                )
+
             if e.icd_code:
                 stats["with_icd_codes"] += 1
             if e.confidence > 0.8:
@@ -150,7 +152,7 @@ class MedicalNERService:
             else:
                 stats["confidence_distribution"]["low"] += 1
         return stats
-    
+
     def format_entities_for_display(self, entities: List[EntityModel]) -> str:
         if not entities:
             return "Keine medizinischen Entitäten gefunden."
@@ -167,7 +169,7 @@ class MedicalNERService:
                 line += f" – Source: {e.source_model}"
             lines.append(line)
         return "\n".join(lines)
-    
+
     # ---------- health ----------
     async def health_check(self) -> Dict[str, Any]:
         try:
@@ -182,6 +184,7 @@ class MedicalNERService:
             }
         except Exception as e:
             return {"service": "ner", "status": "unhealthy", "error": str(e)}
+
 
 # Global NER service instance
 ner_service = MedicalNERService()

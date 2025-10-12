@@ -42,10 +42,12 @@ async def test_suggest_report_parses_llm_payload():
         "patient_problem_statement": "Gangunsicherheit beim Treppensteigen.",
         "treatment_outcome": "schmerzfrei",
         "therapy_status_note": "Patient kann wieder ohne Stock gehen.",
-        "follow_up_recommendation": "Weiterbehandlung mit Krankengymnastik."
+        "follow_up_recommendation": "Weiterbehandlung mit Krankengymnastik.",
     }
     service = ReportExtractorService(llm_client=FakeLLM(payload))
-    request = ReportSuggestionRequest(transcript="Patient berichtet über Schmerzen, ist nun schmerzfrei.")
+    request = ReportSuggestionRequest(
+        transcript="Patient berichtet über Schmerzen, ist nun schmerzfrei."
+    )
 
     result: ClinicalReportDraft = await service.suggest_report(request)
 
@@ -59,7 +61,9 @@ async def test_suggest_report_parses_llm_payload():
 
 @pytest.mark.asyncio
 async def test_suggest_report_uses_defaults_when_missing_data():
-    service = ReportExtractorService(llm_client=FakeLLM({"treatment_outcome": "unverändert"}))
+    service = ReportExtractorService(
+        llm_client=FakeLLM({"treatment_outcome": "unverändert"})
+    )
     request = ReportSuggestionRequest(transcript="Keine Änderung feststellbar.")
 
     today = date.today()

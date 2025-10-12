@@ -32,6 +32,7 @@ latency_logger = get_latency_logger()
 @dataclass
 class ToolResult:
     """Tool execution result for agno 2.1.1 compatibility."""
+
     success: bool
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
@@ -40,6 +41,7 @@ class ToolResult:
 @dataclass
 class ClinicalIntakeResult:
     """Result of clinical intake processing."""
+
     encounter_id: str
     audio_record_id: str
     transcription: str
@@ -54,26 +56,26 @@ class ClinicalIntakeResult:
 
 class Tool:
     """Tool class for agno 2.1.1 compatibility."""
-    
+
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
         self._function = None
-    
+
     async def execute(self, *args, **kwargs) -> ToolResult:
         """Execute the tool - to be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement execute method")
-    
+
     def to_agno_function(self) -> Function:
         """Convert to agno 2.1.1 Function."""
         if self._function is None:
             self._function = Function(
                 name=self.name,
                 description=self.description,
-                function=self._execute_wrapper
+                function=self._execute_wrapper,
             )
         return self._function
-    
+
     async def _execute_wrapper(self, **kwargs) -> Dict[str, Any]:
         """Wrapper to convert ToolResult to agno format."""
         result = await self.execute(**kwargs)
@@ -85,26 +87,28 @@ class Tool:
 
 class STTTool(Tool):
     """Tool for speech-to-text processing."""
-    
+
     def __init__(self):
         super().__init__(
             name="speech_to_text",
-            description="Convert audio to text using Whisper with fallback support"
+            description="Convert audio to text using Whisper with fallback support",
         )
-    
-    async def execute(self, audio_data: bytes, audio_format: str = "webm", **kwargs) -> ToolResult:
+
+    async def execute(
+        self, audio_data: bytes, audio_format: str = "webm", **kwargs
+    ) -> ToolResult:
         """Execute speech-to-text processing."""
         try:
             start_time = time.time()
-            
+
             result = await stt_service.transcribe_audio(
                 audio_data=audio_data,
                 audio_format=audio_format,
-                duration_seconds=kwargs.get("duration_seconds")
+                duration_seconds=kwargs.get("duration_seconds"),
             )
-            
+
             processing_time = (time.time() - start_time) * 1000
-            
+
             return ToolResult(
                 success=True,
                 data={
@@ -112,126 +116,118 @@ class STTTool(Tool):
                     "confidence": result["confidence"],
                     "model": result["model"],
                     "fallback_used": result.get("fallback_used", False),
-                    "processing_time_ms": processing_time
-                }
+                    "processing_time_ms": processing_time,
+                },
             )
-            
+
         except Exception as e:
             logger.error(f"STT tool failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
 
 class NERTool(Tool):
     """Tool for medical named entity recognition."""
-    
+
     def __init__(self):
         super().__init__(
             name="medical_ner",
-            description="Extract medical entities from text using NER microservice"
+            description="Extract medical entities from text using NER microservice",
         )
-    
+
     async def execute(self, text: str, **kwargs) -> ToolResult:
         """Execute medical entity extraction."""
         try:
             start_time = time.time()
-            
+
             entities = await ner_service.extract_entities(text)
-            
+
             # Convert to dict format for serialization
             entity_dicts = []
             for entity in entities:
-                entity_dicts.append({
-                    "text": entity.text,
-                    "label": entity.label,
-                    "start": entity.start,
-                    "end": entity.end,
-                    "confidence": entity.confidence,
-                    "icd_code": entity.icd_code,
-                    "icd_description": entity.icd_description,
-                    "normalized_text": entity.normalized_text,
-                    "category": entity.category
-                })
-            
+                entity_dicts.append(
+                    {
+                        "text": entity.text,
+                        "label": entity.label,
+                        "start": entity.start,
+                        "end": entity.end,
+                        "confidence": entity.confidence,
+                        "icd_code": entity.icd_code,
+                        "icd_description": entity.icd_description,
+                        "normalized_text": entity.normalized_text,
+                        "category": entity.category,
+                    }
+                )
+
             processing_time = (time.time() - start_time) * 1000
-            
+
             return ToolResult(
                 success=True,
                 data={
                     "entities": entity_dicts,
                     "count": len(entity_dicts),
-                    "processing_time_ms": processing_time
-                }
+                    "processing_time_ms": processing_time,
+                },
             )
-            
+
         except Exception as e:
             logger.error(f"NER tool failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
 
 class LLMTool(Tool):
     """Tool for LLM-based clinical summarization."""
-    
+
     def __init__(self):
         super().__init__(
             name="clinical_llm",
-            description="Generate clinical summaries using Mistral 7B with fallback support"
+            description="Generate clinical summaries using Mistral 7B with fallback support",
         )
-        
-        
-        
+
     async def clean_transcript(self, transcripts: list[str], **kwargs) -> ToolResult:
         """Execute transcript cleaning."""
         try:
             start_time = time.time()
-            
+
             result = await llm_service.clean_transcript(
                 transcripts=transcripts,
                 task_type=kwargs.get("task_type"),
-                user_id=kwargs.get("user_id")
+                user_id=kwargs.get("user_id"),
             )
-            
+
             processing_time = (time.time() - start_time) * 1000
-            
-            return ToolResult(
-                success=True,
-                data=result
-            )
-            
+
+            return ToolResult(success=True, data=result)
+
         except Exception as e:
             logger.error(f"Transcript cleaning failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
-    
-    async def execute(self, transcript: str, entities: List[Dict[str, Any]], task_type: str = "intake_summary", **kwargs) -> ToolResult:
+            return ToolResult(success=False, error=str(e))
+
+    async def execute(
+        self,
+        transcript: str,
+        entities: List[Dict[str, Any]],
+        task_type: str = "intake_summary",
+        **kwargs,
+    ) -> ToolResult:
         """Execute clinical summarization."""
         try:
             start_time = time.time()
-            
+
             # Generate clinical summary
             summary_result = await llm_service.generate_clinical_summary(
                 transcript=transcript,
                 entities=entities,
                 task_type=task_type,
-                user_id=kwargs.get("user_id")
+                user_id=kwargs.get("user_id"),
             )
-            
-            
-            
+
             # Generate structured notes
             structured_result = await llm_service.generate_structured_notes(
                 clinical_summary=summary_result["content"]
             )
-            
+
             processing_time = (time.time() - start_time) * 1000
-            
+
             return ToolResult(
                 success=True,
                 data={
@@ -239,39 +235,37 @@ class LLMTool(Tool):
                     "structured_notes": structured_result["structured_notes"],
                     "model": summary_result["model"],
                     "fallback_used": summary_result.get("fallback_used", False),
-                    "processing_time_ms": processing_time
-                }
+                    "processing_time_ms": processing_time,
+                },
             )
-            
+
         except Exception as e:
             logger.error(f"LLM tool failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
 
 class TranslationTool(Tool):
     """Tool for clinical notes translation."""
-    
+
     def __init__(self):
         super().__init__(
             name="clinical_translation",
-            description="Translate clinical notes using NLLB with DeepL fallback"
+            description="Translate clinical notes using NLLB with DeepL fallback",
         )
-    
-    async def execute(self, clinical_notes: Dict[str, Any], target_lang: str = "en", **kwargs) -> ToolResult:
+
+    async def execute(
+        self, clinical_notes: Dict[str, Any], target_lang: str = "en", **kwargs
+    ) -> ToolResult:
         """Execute clinical notes translation."""
         try:
             start_time = time.time()
-            
+
             result = await translation_service.translate_clinical_notes(
-                clinical_notes=clinical_notes,
-                target_lang=target_lang
+                clinical_notes=clinical_notes, target_lang=target_lang
             )
-            
+
             processing_time = (time.time() - start_time) * 1000
-            
+
             return ToolResult(
                 success=True,
                 data={
@@ -279,39 +273,38 @@ class TranslationTool(Tool):
                     "source_language": result["source_language"],
                     "target_language": result["target_language"],
                     "translation_applied": result["translation_applied"],
-                    "processing_time_ms": processing_time
-                }
+                    "processing_time_ms": processing_time,
+                },
             )
-            
+
         except Exception as e:
             logger.error(f"Translation tool failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
 
 class StorageTool(Tool):
     """Tool for data storage operations."""
-    
+
     def __init__(self):
         super().__init__(
             name="clinical_storage",
-            description="Store clinical data in Supabase with audit logging"
+            description="Store clinical data in Supabase with audit logging",
         )
-    
-    async def execute(self, operation: str, data: Dict[str, Any], **kwargs) -> ToolResult:
+
+    async def execute(
+        self, operation: str, data: Dict[str, Any], **kwargs
+    ) -> ToolResult:
         """Execute storage operations."""
         try:
             start_time = time.time()
-            
+
             if operation == "save_audio":
                 result = await storage_service.save_audio_record(
                     encounter_id=data["encounter_id"],
                     organization_id=data["organization_id"],
                     audio_data=data["audio_data"],
                     audio_metadata=data["audio_metadata"],
-                    user_id=data["user_id"]
+                    user_id=data["user_id"],
                 )
             elif operation == "save_entities":
                 result = await storage_service.save_medical_entities(
@@ -319,40 +312,37 @@ class StorageTool(Tool):
                     audio_record_id=data["audio_record_id"],
                     organization_id=data["organization_id"],
                     entities=data["entities"],
-                    user_id=data["user_id"]
+                    user_id=data["user_id"],
                 )
             elif operation == "save_notes":
                 result = await storage_service.save_clinical_notes(
                     encounter_id=data["encounter_id"],
                     organization_id=data["organization_id"],
                     notes_data=data["notes_data"],
-                    user_id=data["user_id"]
+                    user_id=data["user_id"],
                 )
             else:
                 raise ValueError(f"Unknown storage operation: {operation}")
-            
+
             processing_time = (time.time() - start_time) * 1000
-            
+
             return ToolResult(
                 success=True,
                 data={
                     "result": result,
                     "operation": operation,
-                    "processing_time_ms": processing_time
-                }
+                    "processing_time_ms": processing_time,
+                },
             )
-            
+
         except Exception as e:
             logger.error(f"Storage tool failed: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
 
 class ClinicalIntakeAgent(Agent):
     """Main clinical intake agent orchestrating the complete pipeline using agno 2.1.1."""
-    
+
     def __init__(self):
         # Initialize tools
         self.stt_tool = STTTool()
@@ -360,26 +350,26 @@ class ClinicalIntakeAgent(Agent):
         self.llm_tool = LLMTool()
         self.translation_tool = TranslationTool()
         self.storage_tool = StorageTool()
-        
+
         # Convert tools to agno functions
         agno_tools = [
             self.stt_tool.to_agno_function(),
             self.ner_tool.to_agno_function(),
             self.llm_tool.to_agno_function(),
             self.translation_tool.to_agno_function(),
-            self.storage_tool.to_agno_function()
+            self.storage_tool.to_agno_function(),
         ]
-        
+
         super().__init__(
             name="ClinicalIntakeAgent",
             description="Orchestrates clinical intake processing pipeline",
             instructions="You are a clinical intake agent that processes medical audio and generates structured clinical notes.",
-            tools=agno_tools
+            tools=agno_tools,
         )
-    
+
     async def process_clinical_intake(
         self,
-        audio_data: bytes,       
+        audio_data: bytes,
         encounter_id: str,
         organization_id: str,
         user_id: str,
@@ -387,11 +377,11 @@ class ClinicalIntakeAgent(Agent):
         audio_format: str = "webm",
         duration_seconds: Optional[float] = None,
         translate_to: Optional[str] = None,
-        task_type: str = "intake_summary"
+        task_type: str = "intake_summary",
     ) -> ClinicalIntakeResult:
         """
         Process complete clinical intake pipeline.
-        
+
         Args:
             audio_data: Raw audio bytes
             encounter_id: Clinical encounter ID
@@ -401,11 +391,11 @@ class ClinicalIntakeAgent(Agent):
             duration_seconds: Audio duration
             translate_to: Target language for translation
             task_type: Type of clinical task
-            
+
         Returns:
             ClinicalIntakeResult with complete processing results
         """
-        #for testing here save all arguments 
+        # for testing here save all arguments
         # await self._save_arguments_for_testing(
         #     audio_data=audio_data,
         #     encounter_id=encounter_id,
@@ -416,62 +406,60 @@ class ClinicalIntakeAgent(Agent):
         #     translate_to=translate_to,
         #     task_type=task_type
         # )
-        
-        
-        
-        
+
         start_time = time.time()
         errors = []
-        
+
         try:
             with RequestContext(request_id=f"intake_{encounter_id}", user_id=user_id):
-                logger.info(f"Starting clinical intake processing for encounter {encounter_id}")
-                
+                logger.info(
+                    f"Starting clinical intake processing for encounter {encounter_id}"
+                )
+
                 # Step 1: Speech-to-Text
                 logger.info("Step 1: Speech-to-Text processing")
                 stt_result = await self.stt_tool.execute(
                     audio_data=audio_data,
                     audio_format=audio_format,
-                    duration_seconds=duration_seconds
+                    duration_seconds=duration_seconds,
                 )
-                
+
                 if not stt_result.success:
                     raise Exception(f"STT failed: {stt_result.error}")
-                
-                main_transcription = stt_result.data["transcription"]                
-                
+
+                main_transcription = stt_result.data["transcription"]
+
                 all_transcriptions = []
                 for item in transcriptions:
-                    #avoid duplicates
+                    # avoid duplicates
                     all_transcriptions.append(item["transcription"].strip())
-                   
+
                 all_transcriptions.append(main_transcription)
-                #remove duplicates
-                all_transcriptions = list(set(all_transcriptions))             
-                
+                # remove duplicates
+                all_transcriptions = list(set(all_transcriptions))
+
                 clean_transcript_result = await self.llm_tool.clean_transcript(
                     transcripts=all_transcriptions,
                     task_type="physio_text_cleaner",
-                    user_id=user_id
+                    user_id=user_id,
                 )
-                
-                if not clean_transcript_result.success:
-                    raise Exception(f"Transcript cleaning failed: {clean_transcript_result.error}")
-                
-                transcription =  clean_transcript_result.data["content"]
 
-                     
-                
+                if not clean_transcript_result.success:
+                    raise Exception(
+                        f"Transcript cleaning failed: {clean_transcript_result.error}"
+                    )
+
+                transcription = clean_transcript_result.data["content"]
+
                 logger.info(f"Transcription completed: {len(transcription)} characters")
-                
-                
+
                 # for now skipping the entity recognition
                 # needs optimization and training
                 # Step 3: Medical Entity Recognition
                 logger.info("skipping Step 2: Medical entity extraction")
                 entities = []
-                #ner_result = await self.ner_tool.execute(text=transcription)
-                
+                # ner_result = await self.ner_tool.execute(text=transcription)
+
                 # if not ner_result.success:
                 #     logger.warning(f"NER failed: {ner_result.error}")
                 #     entities = []
@@ -479,51 +467,52 @@ class ClinicalIntakeAgent(Agent):
                 # else:
                 #     entities = ner_result.data["entities"]
                 #     logger.info(f"Extracted {len(entities)} medical entities")
-                
+
                 # Step 4: LLM Clinical Summarization
                 logger.info("Step 3: Clinical summarization")
                 llm_result = await self.llm_tool.execute(
                     transcript=transcription,
                     entities=entities,
                     task_type=task_type,
-                    user_id=user_id
+                    user_id=user_id,
                 )
-                
+
                 if not llm_result.success:
                     raise Exception(f"LLM processing failed: {llm_result.error}")
-                
+
                 clinical_summary = llm_result.data["clinical_summary"]
                 structured_notes = llm_result.data["structured_notes"]
                 logger.info("Clinical summarization completed")
-                
+
                 # Step 4: Translation (if requested)
                 translated_notes = None
                 if translate_to and translate_to != "de":
                     logger.info(f"Step 4: Translation to {translate_to}")
                     translation_result = await self.translation_tool.execute(
-                        clinical_notes=structured_notes,
-                        target_lang=translate_to
+                        clinical_notes=structured_notes, target_lang=translate_to
                     )
-                    
+
                     if translation_result.success:
                         translated_notes = translation_result.data["translated_notes"]
                         logger.info("Translation completed")
                     else:
-                        logger.warning(f"Translation failed: {translation_result.error}")
+                        logger.warning(
+                            f"Translation failed: {translation_result.error}"
+                        )
                         errors.append(f"Translation failed: {translation_result.error}")
-                
+
                 # Step 5: Storage Operations
                 logger.info("Step 5: Storing results")
-                
+
                 # Save audio record
                 audio_metadata = {
                     "duration_seconds": duration_seconds,
                     "format": audio_format,
                     "transcription_text": transcription,
                     "transcription_confidence": stt_result.data["confidence"],
-                    "processing_status": "completed"
+                    "processing_status": "completed",
                 }
-                
+
                 # audio_storage_result = await self.storage_tool.execute(
                 #     operation="save_audio",
                 #     data={
@@ -534,13 +523,13 @@ class ClinicalIntakeAgent(Agent):
                 #         "user_id": user_id
                 #     }
                 # )
-                
+
                 # if not audio_storage_result.success:
                 #     raise Exception(f"Audio storage failed: {audio_storage_result.error}")
-                
+
                 # audio_record_id = audio_storage_result.data["result"]["id"]
                 # logger.info(f"Audio record saved: {audio_record_id}")
-                
+
                 # Save medical entities
                 # if entities:
                 #     entities_storage_result = await self.storage_tool.execute(
@@ -553,11 +542,11 @@ class ClinicalIntakeAgent(Agent):
                 #             "user_id": user_id
                 #         }
                 #     )
-                    
+
                 #     if not entities_storage_result.success:
                 #         logger.warning(f"Entities storage failed: {entities_storage_result.error}")
                 #         errors.append(f"Entities storage failed: {entities_storage_result.error}")
-                
+
                 # Save clinical notes
                 notes_data = {
                     "note_type": task_type,
@@ -568,9 +557,9 @@ class ClinicalIntakeAgent(Agent):
                     "translated_language": translate_to if translated_notes else None,
                     "model_used": llm_result.data["model"],
                     "processing_time_ms": (time.time() - start_time) * 1000,
-                    "confidence_score": stt_result.data["confidence"]
+                    "confidence_score": stt_result.data["confidence"],
                 }
-                
+
                 # notes_storage_result = await self.storage_tool.execute(
                 #     operation="save_notes",
                 #     data={
@@ -580,19 +569,21 @@ class ClinicalIntakeAgent(Agent):
                 #         "user_id": user_id
                 #     }
                 # )
-                
+
                 # if not notes_storage_result.success:
                 #     logger.warning(f"Notes storage failed: {notes_storage_result.error}")
                 #     errors.append(f"Notes storage failed: {notes_storage_result.error}")
-                
+
                 # Calculate total processing time
-                
-                audio_record_id= "123"
-                
+
+                audio_record_id = "123"
+
                 total_processing_time = (time.time() - start_time) * 1000
-                
-                logger.info(f"Clinical intake processing completed in {total_processing_time:.2f}ms")
-                
+
+                logger.info(
+                    f"Clinical intake processing completed in {total_processing_time:.2f}ms"
+                )
+
                 return ClinicalIntakeResult(
                     encounter_id=encounter_id,
                     audio_record_id=audio_record_id,
@@ -603,15 +594,15 @@ class ClinicalIntakeAgent(Agent):
                     translated_notes=translated_notes,
                     processing_time_ms=total_processing_time,
                     success=True,
-                    errors=errors
+                    errors=errors,
                 )
-                
+
         except Exception as e:
             total_processing_time = (time.time() - start_time) * 1000
             error_msg = f"Clinical intake processing failed: {e}"
             logger.error(error_msg)
             errors.append(error_msg)
-            
+
             return ClinicalIntakeResult(
                 encounter_id=encounter_id,
                 audio_record_id="",
@@ -622,82 +613,89 @@ class ClinicalIntakeAgent(Agent):
                 translated_notes=None,
                 processing_time_ms=total_processing_time,
                 success=False,
-                errors=errors
+                errors=errors,
             )
-    
+
     async def process_streaming_intake(
         self,
         audio_chunks: AsyncGenerator[bytes, None],
         encounter_id: str,
         organization_id: str,
         user_id: str,
-        chunk_duration: float = 1.5
+        chunk_duration: float = 1.5,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process streaming clinical intake with real-time updates.
-        
+
         Args:
             audio_chunks: Async generator of audio chunks
             encounter_id: Clinical encounter ID
             organization_id: Organization ID
             user_id: User ID for audit logging
             chunk_duration: Duration of each audio chunk
-            
+
         Yields:
             Dict with processing updates and results
         """
         accumulated_audio = b""
         last_transcription = ""
-        
+
         try:
-            with RequestContext(request_id=f"streaming_{encounter_id}", user_id=user_id):
-                logger.info(f"Starting streaming clinical intake for encounter {encounter_id}")
-                
+            with RequestContext(
+                request_id=f"streaming_{encounter_id}", user_id=user_id
+            ):
+                logger.info(
+                    f"Starting streaming clinical intake for encounter {encounter_id}"
+                )
+
                 async for chunk in audio_chunks:
                     accumulated_audio += chunk
-                    
+
                     # Process chunk for partial transcription
                     try:
                         # Convert accumulated audio to WAV
                         from ..services.stt_service import stt_service
-                        #wav_data = stt_service._convert_webm_to_wav(accumulated_audio)
-                        wav_data = await stt_service._process_audio_for_stt(accumulated_audio, "wav")
-                        
+
+                        # wav_data = stt_service._convert_webm_to_wav(accumulated_audio)
+                        wav_data = await stt_service._process_audio_for_stt(
+                            accumulated_audio, "wav"
+                        )
+
                         # Get partial transcription
                         stt_result = await self.stt_tool.execute(
-                            audio_data=wav_data,
-                            audio_format="wav"
+                            audio_data=wav_data, audio_format="wav"
                         )
-                        
+
                         if stt_result.success:
                             current_transcription = stt_result.data["transcription"]
-                            
+
                             # Only yield if transcription has changed significantly
-                            if current_transcription != last_transcription and len(current_transcription) > len(last_transcription):
+                            if current_transcription != last_transcription and len(
+                                current_transcription
+                            ) > len(last_transcription):
                                 yield {
                                     "type": "partial_transcription",
                                     "transcription": current_transcription,
                                     "confidence": stt_result.data["confidence"],
-                                    "timestamp": time.time()
+                                    "timestamp": time.time(),
                                 }
                                 last_transcription = current_transcription
-                    
+
                     except Exception as e:
                         logger.warning(f"Partial transcription failed: {e}")
                         yield {
                             "type": "error",
                             "error": f"Partial transcription failed: {e}",
-                            "timestamp": time.time()
+                            "timestamp": time.time(),
                         }
-                
+
                 # Final processing
                 if accumulated_audio:
-                #       all_transcriptions = []
-                # for item in transcriptions:
-                #     all_transcriptions.append(item["transcription"])
+                    #       all_transcriptions = []
+                    # for item in transcriptions:
+                    #     all_transcriptions.append(item["transcription"])
                     transcriptions = [{"transcription": current_transcription}]
-                    
-                    
+
                     logger.info("Processing final accumulated audio")
                     final_result = await self.process_clinical_intake(
                         audio_data=accumulated_audio,
@@ -705,55 +703,51 @@ class ClinicalIntakeAgent(Agent):
                         encounter_id=encounter_id,
                         organization_id=organization_id,
                         user_id=user_id,
-                        audio_format="wav"
+                        audio_format="wav",
                     )
-                    
+
                     yield {
                         "type": "final_result",
                         "result": final_result,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-                
+
         except Exception as e:
             logger.error(f"Streaming intake failed: {e}")
-            yield {
-                "type": "error",
-                "error": str(e),
-                "timestamp": time.time()
-            }
-    
+            yield {"type": "error", "error": str(e), "timestamp": time.time()}
+
     async def warm_up_services(self) -> None:
         """Warm up all services for optimal performance."""
         try:
             logger.info("Warming up clinical intake services...")
-            
+
             # Warm up STT service models
-            if hasattr(stt_service, 'warm_up_models'):
+            if hasattr(stt_service, "warm_up_models"):
                 await stt_service.warm_up_models()
-            
+
             logger.info("All services warmed up successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to warm up services: {e}")
-    
+
     async def health_check(self) -> Dict[str, Any]:
         """Check agent and all tools health."""
         health_status = {
             "agent": "ClinicalIntakeAgent",
             "status": "healthy",
             "tools": {},
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
-        
+
         # Check each tool
         tools = [
             ("stt", stt_service),
             ("ner", ner_service),
             ("llm", llm_service),
             ("translation", translation_service),
-            ("storage", storage_service)
+            ("storage", storage_service),
         ]
-        
+
         for tool_name, service in tools:
             try:
                 tool_health = await service.health_check()
@@ -761,13 +755,15 @@ class ClinicalIntakeAgent(Agent):
             except Exception as e:
                 health_status["tools"][tool_name] = {
                     "status": "unhealthy",
-                    "error": str(e)
+                    "error": str(e),
                 }
-        
+
         # Determine overall status
-        if not all(tool.get("status") == "healthy" for tool in health_status["tools"].values()):
+        if not all(
+            tool.get("status") == "healthy" for tool in health_status["tools"].values()
+        ):
             health_status["status"] = "degraded"
-        
+
         return health_status
 
     async def _save_arguments_for_testing(
@@ -779,11 +775,11 @@ class ClinicalIntakeAgent(Agent):
         audio_format: str,
         duration_seconds: Optional[float],
         translate_to: Optional[str],
-        task_type: str
+        task_type: str,
     ) -> None:
         """
         Save all arguments to a folder in the root directory for testing purposes.
-        
+
         Args:
             All arguments from process_clinical_intake method
         """
@@ -791,18 +787,20 @@ class ClinicalIntakeAgent(Agent):
             # Create testing folder in root directory
             test_folder = "clinical_intake_test_data"
             os.makedirs(test_folder, exist_ok=True)
-            
+
             # Create timestamp for unique folder
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            session_folder = os.path.join(test_folder, f"session_{encounter_id}_{timestamp}")
+            session_folder = os.path.join(
+                test_folder, f"session_{encounter_id}_{timestamp}"
+            )
             os.makedirs(session_folder, exist_ok=True)
-            
+
             # Save audio data as file
             audio_filename = f"audio_data.{audio_format}"
             audio_path = os.path.join(session_folder, audio_filename)
             with open(audio_path, "wb") as f:
                 f.write(audio_data)
-            
+
             # Create arguments metadata
             arguments_data = {
                 "encounter_id": encounter_id,
@@ -815,19 +813,21 @@ class ClinicalIntakeAgent(Agent):
                 "timestamp": datetime.now().isoformat(),
                 "audio_file": audio_filename,
                 "audio_size_bytes": len(audio_data),
-                "audio_base64": base64.b64encode(audio_data).decode('utf-8')  # For debugging
+                "audio_base64": base64.b64encode(audio_data).decode(
+                    "utf-8"
+                ),  # For debugging
             }
-            
+
             # Save arguments as JSON
             args_path = os.path.join(session_folder, "arguments.json")
             with open(args_path, "w", encoding="utf-8") as f:
                 json.dump(arguments_data, f, indent=2, ensure_ascii=False)
-            
+
             # Log the save operation
             self.logger.info(f"Saved clinical intake arguments to: {session_folder}")
             self.logger.info(f"Audio file: {audio_path} ({len(audio_data)} bytes)")
             self.logger.info(f"Arguments file: {args_path}")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to save arguments for testing: {e}")
             # Don't raise the exception to avoid breaking the main flow

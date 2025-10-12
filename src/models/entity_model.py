@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional
 
 
-
 @dataclass
 class EntityModel:
     """Entity model matching microservice response format exactly."""
+
     text: str
     label: str
     start: int
@@ -16,9 +16,9 @@ class EntityModel:
     icd_description: Optional[str] = None
     source_model: Optional[str] = None
     category: Optional[str] = None
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EntityModel':
+    def from_dict(cls, data: Dict[str, Any]) -> "EntityModel":
         """Create EntityModel from dictionary (microservice response)."""
         return cls(
             text=data.get("text", ""),
@@ -30,9 +30,9 @@ class EntityModel:
             icd_code=data.get("icd_code"),
             icd_description=data.get("icd_description"),
             source_model=data.get("source_model"),
-            category=data.get("category")
+            category=data.get("category"),
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert EntityModel to dictionary."""
         return {
@@ -45,9 +45,9 @@ class EntityModel:
             "icd_code": self.icd_code,
             "icd_description": self.icd_description,
             "source_model": self.source_model,
-            "category": self.category
+            "category": self.category,
         }
-    
+
     def __str__(self) -> str:
         """String representation of the entity."""
         parts = [f"{self.text} ({self.label})"]

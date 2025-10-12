@@ -20,7 +20,9 @@ class ReportDefaultsSettings(BaseSettings):
     prescription_date: str = Field("2025-01-01", env="REPORT_PRESCRIPTION_DATE")
     treatment_date_from: str = Field("2025-01-05", env="REPORT_TREATMENT_FROM")
     treatment_date_to: str = Field("2025-01-20", env="REPORT_TREATMENT_TO")
-    physiotherapist_name: str = Field("Anita Bahmani", env="REPORT_PHYSIOTHERAPIST_NAME")
+    physiotherapist_name: str = Field(
+        "Anita Bahmani", env="REPORT_PHYSIOTHERAPIST_NAME"
+    )
     report_city: str = Field("Essen", env="REPORT_CITY")
 
     class Config:

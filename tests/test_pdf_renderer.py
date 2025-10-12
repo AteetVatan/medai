@@ -29,7 +29,7 @@ def build_sample_report() -> ClinicalReport:
         treatment_outcome=TreatmentOutcome.LINDERUNG,
         therapy_status_note="Verbesserte Belastbarkeit der unteren Extremitäten.",
         follow_up_recommendation="Weiterbehandlung mit Krankengymnastik.",
-        transcript="Patient berichtet über deutliche Verbesserung nach Therapie."
+        transcript="Patient berichtet über deutliche Verbesserung nach Therapie.",
     )
 
 
@@ -38,6 +38,6 @@ def test_render_report_pdf_produces_bytes():
 
     filename, content = render_report_pdf(report)
 
-    assert filename.endswith('.pdf')
+    assert filename.endswith(".pdf")
     assert isinstance(content, (bytes, bytearray))
     assert len(content) > 100

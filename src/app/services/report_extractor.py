@@ -28,7 +28,9 @@ class ReportExtractorService:
         self._llm_client = llm_client
         self._defaults = get_report_defaults()
 
-    async def suggest_report(self, payload: ReportSuggestionRequest) -> ClinicalReportDraft:
+    async def suggest_report(
+        self, payload: ReportSuggestionRequest
+    ) -> ClinicalReportDraft:
         """Generate a report draft from the supplied transcript payload."""
 
         transcript_text = payload.combined_text()
