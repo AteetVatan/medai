@@ -171,8 +171,14 @@ async def handle_websocket_message(session_id: str, message: Dict[str, Any]):
         if message_type == "start_session":
             await handle_start_session(session_id, data)
         
+        elif message_type == "start_recording":
+            await handle_start_recording(session_id, data)
+        
         elif message_type == "audio_chunk":
             await handle_audio_chunk(session_id, data)
+        
+        elif message_type == "end_recording":
+            await handle_end_recording(session_id, data)
         
         elif message_type == "end_session":
             await handle_end_session(session_id, data)
@@ -220,6 +226,41 @@ async def handle_start_session(session_id: str, data: Dict[str, Any]):
             "message": "Session started, ready for audio"
         }
     })
+
+
+async def handle_start_recording(session_id: str, data: Dict[str, Any]):
+    """Handle start of new recording within existing session."""
+    try:
+        # Verify session exists
+        session_data = ws_manager.get_session_data(session_id)
+        if not session_data or not session_data.get("encounter_id"):
+            await ws_manager.send_message(session_id, {
+                "type": "error",
+                "error": "Session not started"
+            })
+            return
+        
+        # Clear audio buffer and partial transcriptions for new recording
+        ws_manager.clear_audio_buffer(session_id)
+        ws_manager.clear_partial_transcriptions(session_id)
+        
+        logger.info(f"Started new recording in session {session_id}")
+        
+        await ws_manager.send_message(session_id, {
+            "type": "recording_started",
+            "data": {
+                "session_id": session_id,
+                "encounter_id": session_data["encounter_id"],
+                "message": "New recording started, ready for audio"
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting recording in session {session_id}: {e}")
+        await ws_manager.send_message(session_id, {
+            "type": "error",
+            "error": f"Failed to start recording: {str(e)}"
+        })
 
 
 async def handle_audio_chunk(session_id: str, data: Dict[str, Any]):
@@ -332,8 +373,8 @@ async def process_partial_transcription(session_id: str, audio_data: bytes, use_
         # Don't send error for partial transcription failures
 
 
-async def handle_end_session(session_id: str, data: Dict[str, Any]):
-    """Handle session end and final processing."""
+async def handle_end_recording(session_id: str, data: Dict[str, Any]):
+    """Handle recording end and processing within session."""
     try:
         session_data = ws_manager.get_session_data(session_id)
         if not session_data or not session_data.get("encounter_id"):
@@ -354,7 +395,7 @@ async def handle_end_session(session_id: str, data: Dict[str, Any]):
             })
             return
         
-        logger.info(f"Session {session_id} ending with {len(accumulated_transcriptions)} partial transcriptions")
+        logger.info(f"Recording in session {session_id} ending with {len(accumulated_transcriptions)} partial transcriptions")
         
         # Send processing started message
         await ws_manager.send_message(session_id, {
@@ -395,16 +436,58 @@ async def handle_end_session(session_id: str, data: Dict[str, Any]):
             }
         })
         
-        # Clear buffers
+        # Clear buffers for next recording
         ws_manager.clear_audio_buffer(session_id)
         ws_manager.clear_partial_transcriptions(session_id)
+        
+    except Exception as e:
+        logger.error(f"Error ending recording in session {session_id}: {e}")
+        await ws_manager.send_message(session_id, {
+            "type": "error",
+            "error": f"Recording end processing failed: {str(e)}"
+        })
+
+
+async def handle_end_session(session_id: str, data: Dict[str, Any]):
+    """Handle session end and cleanup."""
+    try:
+        session_data = ws_manager.get_session_data(session_id)
+        if not session_data:
+            await ws_manager.send_message(session_id, {
+                "type": "error",
+                "error": "Session not found"
+            })
+            return
+        
+        logger.info(f"Ending session {session_id}")
+        
+        # Send session ended message
+        await ws_manager.send_message(session_id, {
+            "type": "session_ended",
+            "data": {
+                "session_id": session_id,
+                "message": "Session ended successfully"
+            }
+        })
+        
+        # Clean up session resources
+        ws_manager.clear_audio_buffer(session_id)
+        ws_manager.clear_partial_transcriptions(session_id)
+        
+        # Disconnect the WebSocket
+        ws_manager.disconnect(session_id)
         
     except Exception as e:
         logger.error(f"Error ending session {session_id}: {e}")
         await ws_manager.send_message(session_id, {
             "type": "error",
-            "error": f"Session end processing failed: {str(e)}"
+            "error": f"Session end failed: {str(e)}"
         })
+        # Still try to cleanup
+        try:
+            ws_manager.disconnect(session_id)
+        except:
+            pass
 
 
 async def handle_ping(session_id: str):
