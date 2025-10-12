@@ -13,9 +13,9 @@ import re
 
 import httpx
 
-from ..utils.config import settings, ModelConfig, LatencyConfig
-from ..utils.logging import get_logger, get_latency_logger, monitor_latency
-from ..utils.cache import cached, cache_key, get_cache_stats
+from src.utils.config import settings, ModelConfig, LatencyConfig
+from src.utils.logging import get_logger, get_latency_logger, monitor_latency
+from src.utils.cache import cached, cache_key, get_cache_stats
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()
@@ -560,7 +560,7 @@ Bitte erstelle eine strukturierte klinische Zusammenfassung basierend auf dem ob
         user_id: Optional[str],
     ):
         """Log LLM interaction for compliance."""
-        from ..utils.logging import get_compliance_logger
+        from src.utils.logging import get_compliance_logger
 
         compliance_logger = get_compliance_logger()
 

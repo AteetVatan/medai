@@ -10,8 +10,8 @@ from typing import Optional, Tuple
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ...utils.logging import get_logger
-from ..models.report import ClinicalReport
+from src.utils.logging import get_logger
+from src.app.models.report import ClinicalReport
 
 logger = get_logger(__name__)
 

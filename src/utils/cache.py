@@ -11,7 +11,7 @@ from functools import wraps
 import asyncio
 from threading import Lock
 
-from .config import settings
+from src.utils.config import settings
 
 
 class CacheManager:

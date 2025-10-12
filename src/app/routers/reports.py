@@ -8,17 +8,17 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from ...utils.logging import get_logger
-from ..config.report_defaults import get_report_defaults
-from ..models.report import (
+from src.utils.logging import get_logger
+from src.app.config.report_defaults import get_report_defaults
+from src.app.models.report import (
     ClinicalReport,
     ClinicalReportDraft,
     ReportDefaults,
     ReportSaveResponse,
     ReportSuggestionRequest,
 )
-from ..services.pdf_renderer import build_report_filename, render_report_pdf
-from ..services.report_extractor import report_extractor_service
+from src.app.services.pdf_renderer import build_report_filename, render_report_pdf
+from src.app.services.report_extractor import report_extractor_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 logger = get_logger(__name__)

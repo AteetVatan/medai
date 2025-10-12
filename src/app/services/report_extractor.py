@@ -8,10 +8,10 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 
-from ...services.llm_service import llm_service
-from ...utils.logging import get_logger
-from ..config.report_defaults import get_report_defaults
-from ..models.report import (
+from src.services.llm_service import llm_service
+from src.utils.logging import get_logger
+from src.app.config.report_defaults import get_report_defaults
+from src.app.models.report import (
     ClinicalReportDraft,
     InsuranceType,
     ReportSuggestionRequest,

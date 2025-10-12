@@ -15,8 +15,8 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from fastapi import WebSocket, WebSocketDisconnect, Depends
 from pydantic import BaseModel
 
-from ..agents.clinical_intake_agent import clinical_intake_agent
-from ..utils.logging import get_logger, RequestContext
+from src.agents.clinical_intake_agent import clinical_intake_agent
+from src.utils.logging import get_logger, RequestContext
 
 logger = get_logger(__name__)
 
@@ -367,7 +367,7 @@ async def process_partial_transcription(
             )
 
             # Convert to WAV format
-            from ..services.stt_service import stt_service
+            from src.services.stt_service import stt_service
 
             # wav_data = await stt_service._process_audio_for_stt(audio_data, "wav")
 

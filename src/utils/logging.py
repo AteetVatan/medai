@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from datetime import datetime
 import json
 
-from .config import settings
+from src.utils.config import settings
 
 # Request context for tracking
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
@@ -295,7 +295,7 @@ class RequestContext:
 def _check_threshold(operation: str, duration_ms: float) -> bool:
     """Check if operation duration exceeds configured thresholds."""
     try:
-        from .config import settings
+        from src.utils.config import settings
 
         # Map operations to their thresholds
         if "stt" in operation.lower() or "whisper" in operation.lower():

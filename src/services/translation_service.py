@@ -12,9 +12,9 @@ import json
 
 from deep_translator import GoogleTranslator
 
-from ..utils.config import settings, ModelConfig
-from ..utils.logging import get_logger, get_latency_logger, monitor_latency
-from ..utils.cache import cached, cache_key, get_cache_stats
+from src.utils.config import settings, ModelConfig
+from src.utils.logging import get_logger, get_latency_logger, monitor_latency
+from src.utils.cache import cached, cache_key, get_cache_stats
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()

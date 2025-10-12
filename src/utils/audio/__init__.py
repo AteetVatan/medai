@@ -1,3 +1,3 @@
-from .audio_processor import audio_processor
+from src.utils.audio.audio_processor import audio_processor
 
 __all__ = ["audio_processor"]

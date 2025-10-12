@@ -1,13 +1,13 @@
 """Utility modules for medAI MVP."""
 
-from .config import settings, ModelConfig, LatencyConfig
-from .logging import (
+from src.utils.config import settings, ModelConfig, LatencyConfig
+from src.utils.logging import (
     get_logger,
     get_latency_logger,
     get_compliance_logger,
     monitor_latency,
 )
-from .cache import CacheManager
+from src.utils.cache import CacheManager
 
 __all__ = [
     "settings",

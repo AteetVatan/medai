@@ -15,8 +15,8 @@ import httpx
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 
-from ..utils.config import settings
-from ..utils.logging import (
+from src.utils.config import settings
+from src.utils.logging import (
     get_logger,
     get_latency_logger,
     get_compliance_logger,

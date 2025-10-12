@@ -8,7 +8,7 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-from ..models.report import ReportDefaults
+from src.app.models.report import ReportDefaults
 
 
 class ReportDefaultsSettings(BaseSettings):

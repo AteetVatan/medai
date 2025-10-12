@@ -12,7 +12,7 @@ import json
 import httpx
 
 from src.utils import settings
-from ..utils.logging import get_logger, get_latency_logger, monitor_latency
+from src.utils.logging import get_logger, get_latency_logger, monitor_latency
 from src.models import EntityModel
 
 logger = get_logger(__name__)

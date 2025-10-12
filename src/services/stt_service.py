@@ -21,10 +21,10 @@ import numpy as np
 import pydub
 from pydub import AudioSegment
 
-from ..utils.config import settings, ModelConfig, LatencyConfig
-from ..utils.logging import get_logger, get_latency_logger, monitor_latency
-from ..utils.cache import cached, cache_key, get_cache_stats
-from ..utils.audio import audio_processor
+from src.utils.config import settings, ModelConfig, LatencyConfig
+from src.utils.logging import get_logger, get_latency_logger, monitor_latency
+from src.utils.cache import cached, cache_key, get_cache_stats
+from src.utils.audio import audio_processor
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()

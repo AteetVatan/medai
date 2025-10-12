@@ -17,13 +17,13 @@ from datetime import datetime
 from agno.agent import Agent, Message, Function
 from agno.tools import Function as ToolFunction, FunctionCall
 
-from ..services.stt_service import stt_service
-from ..services.ner_service import ner_service
-from ..services.llm_service import llm_service
-from ..services.translation_service import translation_service
-from ..services.storage_service import storage_service
+from src.services.stt_service import stt_service
+from src.services.ner_service import ner_service
+from src.services.llm_service import llm_service
+from src.services.translation_service import translation_service
+from src.services.storage_service import storage_service
 from src.utils import settings, LatencyConfig
-from ..utils.logging import get_logger, get_latency_logger, RequestContext
+from src.utils.logging import get_logger, get_latency_logger, RequestContext
 
 logger = get_logger(__name__)
 latency_logger = get_latency_logger()
@@ -654,7 +654,7 @@ class ClinicalIntakeAgent(Agent):
                     # Process chunk for partial transcription
                     try:
                         # Convert accumulated audio to WAV
-                        from ..services.stt_service import stt_service
+                        from src.services.stt_service import stt_service
 
                         # wav_data = stt_service._convert_webm_to_wav(accumulated_audio)
                         wav_data = await stt_service._process_audio_for_stt(
