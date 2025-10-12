@@ -44,6 +44,15 @@ class AudioProcessor:
         Convert arbitrary input (webm/mp3/wav/ogg...) to WAV (PCM s16le, mono, 16kHz) in memory.
         input_format is optional; FFmpeg will usually auto-detect by probing.
         """
+        
+        # Validate audio data before processing
+        if not audio_bytes or len(audio_bytes) == 0:
+            raise ValueError("Empty audio data provided to FFmpeg")
+        
+          
+        if len(audio_bytes) < 100:  # Minimum reasonable size
+            logger.warning(f"Very small audio data: {len(audio_bytes)} bytes")
+       
         cmd = [
             self.ffmpeg_path,
             "-hide_banner",
@@ -57,7 +66,7 @@ class AudioProcessor:
             "-f", "wav",
             "pipe:1",
         ]
-        try:
+        try:           
             proc = subprocess.run(
                 cmd,
                 input=audio_bytes,
@@ -67,8 +76,13 @@ class AudioProcessor:
             )
             return proc.stdout
         except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg conversion failed: {e.stderr.decode(errors='ignore')}")
-            raise       
+            # FIXED: Properly capture stderr
+            stderr_output = e.stderr.decode(errors='ignore') if e.stderr else "No stderr output"
+            logger.error(f"FFmpeg conversion failed with exit code {e.returncode}")
+            logger.error(f"FFmpeg stderr: {stderr_output}")
+            logger.error(f"Audio data size: {len(audio_bytes)} bytes")
+            logger.error(f"Command: {' '.join(cmd)}")
+            raise ValueError(f"FFmpeg failed (exit {e.returncode}): {stderr_output}")   
       
         
     def _pcm_chunks_to_wav_once(self,pcm_chunks, rate=16000, channels=1):
