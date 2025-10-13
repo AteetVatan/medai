@@ -148,7 +148,7 @@ def cached(prefix: str, ttl: Optional[int] = None):
 
             # Try to get from cache
             cached_result = cache_manager.get(cache_key)
-            cached_result = None
+            #cached_result = None
             if cached_result is not None:
                 return cached_result
 
