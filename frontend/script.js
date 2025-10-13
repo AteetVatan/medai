@@ -34,6 +34,11 @@ class MedAIApp {
         this.taskTypeSelect = document.getElementById('taskType');
         this.translateToSelect = document.getElementById('translateTo');
 
+        // Handle missing translateTo element gracefully
+        if (!this.translateToSelect) {
+            console.warn('translateTo element not found - translation feature disabled');
+        }
+
         // Control elements
         this.recordButton = document.getElementById('recordButton');
         this.recordText = document.getElementById('recordText');
@@ -111,15 +116,15 @@ class MedAIApp {
     }
 
     initializeUI() {
-        // Disable buttons initially - user must start session first
-        this.recordButton.disabled = true;
+        // Enable record button - it will start session and recording in one click
+        this.recordButton.disabled = false;
         this.stopButton.disabled = true;
         this.updateResultsAvailability();
 
-        console.log('UI initialized - record button disabled:', this.recordButton.disabled);
+        console.log('UI initialized - record button enabled:', !this.recordButton.disabled);
 
         // Set initial status
-        this.updateStatus('Bereit für Sitzung', 'ready');
+        this.updateStatus('Bereit für Aufnahme', 'ready');
     }
 
     initializeReportForm() {
@@ -272,6 +277,8 @@ class MedAIApp {
 
             case 'error':
                 this.showMessage(`Fehler: ${message.error}`, 'error');
+                // Re-enable record button on error
+                this.recordButton.disabled = false;
                 break;
 
             default:
@@ -319,10 +326,20 @@ class MedAIApp {
     async toggleRecording() {
         console.log('toggleRecording called, mediaRecorder:', !!this.mediaRecorder, 'isRecording:', this.isRecording);
 
-        // Check if session is started
+        // If session is not started, start it first
         if (!this.mediaRecorder) {
-            console.log('No mediaRecorder, showing error message');
-            this.showMessage('Bitte starten Sie zuerst eine Sitzung mit dem "Sitzung starten" Button.', 'error');
+            console.log('No mediaRecorder, starting session first...');
+            try {
+                await this.startSession();
+                // After starting session, start recording immediately
+                if (this.mediaRecorder && !this.isRecording) {
+                    console.log('Session started, now starting recording...');
+                    await this.startRecording();
+                }
+            } catch (error) {
+                console.error('Failed to start session:', error);
+                this.showMessage('Fehler beim Starten der Sitzung. Bitte versuchen Sie es erneut.', 'error');
+            }
             return;
         }
 
@@ -381,6 +398,9 @@ class MedAIApp {
             this.recordButton.classList.remove('recording');
             this.recordText.textContent = 'Aufnahme starten';
             this.stopButton.disabled = true;
+
+            // Disable record button while processing
+            this.recordButton.disabled = true;
 
             // Show loading icon with specific message
             this.updateStatusWithLoading('Transcript and Physiotherapy summary is ready', 'processing');
@@ -503,7 +523,9 @@ class MedAIApp {
             return;
         }
         if (typeof summary === 'string') {
-            this.summaryText.innerHTML = `<pre>${summary}</pre>`;
+            // Parse the summary string and format it as a structured list
+            const formattedSummary = this.formatSummaryText(summary);
+            this.summaryText.innerHTML = formattedSummary;
         } else if (typeof summary === 'object') {
             // Handle structured notes
             let html = '';
@@ -523,6 +545,147 @@ class MedAIApp {
         } else {
             this.summaryText.innerHTML = '<em>Keine Zusammenfassung verfügbar.</em>';
         }
+    }
+
+    formatSummaryText(summaryText) {
+        // Check for different formats
+        const hasStructuredSections = /\b\d+\.\s+[A-ZÄÖÜ][A-ZÄÖÜ\s]+:\s*[^0-9]/.test(summaryText);
+        const hasListFormat = /Struktur:\s*\d+\.\s+[A-ZÄÖÜ]/.test(summaryText);
+        const hasClinicalSummary = /Strukturierte klinische Zusammenfassung:/.test(summaryText);
+
+        if (hasClinicalSummary || hasStructuredSections) {
+            // Handle clinical summary format: "Strukturierte klinische Zusammenfassung: 1. HAUPTBESCHWERDEN: content"
+            return this.formatClinicalSummary(summaryText);
+        } else if (hasListFormat) {
+            // Handle list format: "Struktur: 1. HAUPTBESCHWERDEN 2. SCHMERZANALYSE"
+            return this.formatListSummary(summaryText);
+        } else {
+            // Fallback to simple content
+            return `<div class="summary-content">${summaryText}</div>`;
+        }
+    }
+
+    formatClinicalSummary(summaryText) {
+        // Handle format: "Strukturierte klinische Zusammenfassung: 1. HAUPTBESCHWERDEN: content 2. SCHMERZANALYSE: content"
+
+        // Remove the prefix if it exists
+        let cleanText = summaryText.replace(/^Strukturierte klinische Zusammenfassung:\s*/, '');
+
+        // Use a more robust approach to find all numbered sections
+        const sectionRegex = /(\d+)\.\s+([A-ZÄÖÜ][A-ZÄÖÜ\s]+):\s*([^]*?)(?=\s*\d+\.\s+[A-ZÄÖÜ]|$)/g;
+        const sections = [];
+        let match;
+
+        while ((match = sectionRegex.exec(cleanText)) !== null) {
+            sections.push({
+                number: match[1],
+                heading: match[2],
+                content: match[3].trim()
+            });
+        }
+
+        let html = '<div class="summary-list">';
+
+        sections.forEach((section, index) => {
+            html += `
+                <div class="summary-item">
+                    <div class="summary-item-header">
+                        <span class="summary-number">${section.number}.</span>
+                        <span class="summary-heading">${section.heading}:</span>
+                    </div>
+                    <div class="summary-item-content">${section.content}</div>
+                </div>
+            `;
+        });
+
+        // If no sections were found, try a fallback approach
+        if (sections.length === 0) {
+            html += `<div class="summary-item"><div class="summary-item-content">${cleanText}</div></div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    formatStructuredSummary(summaryText) {
+        // Split the text by numbered sections (1., 2., etc.) - use word boundary for multi-digit numbers
+        const sections = summaryText.split(/(?=\b\d+\.\s+[A-ZÄÖÜ][A-ZÄÖÜ\s]+:)/);
+
+        let html = '<div class="summary-list">';
+
+        sections.forEach((section, index) => {
+            if (section.trim()) {
+                // Extract the number, heading, and content - use word boundary for multi-digit numbers
+                const match = section.match(/^(\d+)\.\s+([A-ZÄÖÜ][A-ZÄÖÜ\s]+):\s*(.*)$/s);
+                if (match) {
+                    const [, number, heading, content] = match;
+                    html += `
+                        <div class="summary-item">
+                            <div class="summary-item-header">
+                                <span class="summary-number">${number}.</span>
+                                <span class="summary-heading">${heading}:</span>
+                            </div>
+                            <div class="summary-item-content">${content.trim()}</div>
+                        </div>
+                    `;
+                } else {
+                    // Handle sections that don't match the pattern
+                    html += `<div class="summary-item"><div class="summary-item-content">${section.trim()}</div></div>`;
+                }
+            }
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    formatListSummary(summaryText) {
+        // Handle format like: "1. HAUPTBESCHWERDEN 2. SCHMERZANALYSE 3. BEWEGUNGSEINSCHRÄNKUNGEN"
+        const listMatch = summaryText.match(/Struktur:\s*(.*?)(?:\s*Ich stehe|$)/s);
+
+        if (listMatch) {
+            const listText = listMatch[1];
+            // Split by numbers and extract items - improved regex to handle multi-digit numbers
+            // Use word boundary to ensure we don't split "10" into "1" and "0"
+            const items = listText.split(/(?=\b\d+\.\s+[A-ZÄÖÜ])/);
+
+            let html = '<div class="summary-list">';
+
+            items.forEach((item, index) => {
+                if (item.trim()) {
+                    // Improved regex to capture full numbers including 10, 11, etc.
+                    const match = item.match(/^(\d+)\.\s+([A-ZÄÖÜ][A-ZÄÖÜ\s]+)/);
+                    if (match) {
+                        const [, number, heading] = match;
+                        html += `
+                            <div class="summary-item">
+                                <div class="summary-item-header">
+                                    <span class="summary-number">${number}.</span>
+                                    <span class="summary-heading">${heading}</span>
+                                </div>
+                                <div class="summary-item-content">Keine Informationen verfügbar</div>
+                            </div>
+                        `;
+                    }
+                }
+            });
+
+            // Add the main message as a separate item
+            const mainMessage = summaryText.replace(/Struktur:.*?(?=Ich stehe|$)/s, '').trim();
+            if (mainMessage) {
+                html += `
+                    <div class="summary-item">
+                        <div class="summary-item-content">${mainMessage}</div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        // Fallback: return as simple content
+        return `<div class="summary-content">${summaryText}</div>`;
     }
 
     formatKey(key) {
@@ -571,6 +734,8 @@ class MedAIApp {
 
         } else {
             this.showMessage(`Verarbeitung fehlgeschlagen: ${data.errors.join(', ')}`, 'error');
+            // Re-enable record button on processing failure
+            this.recordButton.disabled = false;
         }
     }
 
@@ -593,7 +758,7 @@ class MedAIApp {
     resetUI() {
         // Reset UI state
         this.startButton.disabled = false;
-        this.recordButton.disabled = true;
+        this.recordButton.disabled = false;  // Keep record button enabled for MVP
         this.stopButton.disabled = true;
 
         // Reset recording state
@@ -1213,12 +1378,37 @@ class ReportFormManager {
 
 // Initialize the application when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    window.medAIApp = new MedAIApp();
+    // Add loading class to body
+    document.body.classList.add('loading');
+
+    // Initialize app with error handling
+    try {
+        window.medAIApp = new MedAIApp();
+        document.body.classList.remove('loading');
+        document.body.classList.add('loaded');
+    } catch (error) {
+        console.error('Failed to initialize medAI app:', error);
+        document.body.classList.remove('loading');
+        document.body.classList.add('error');
+    }
 });
 
 // Handle page unload
 window.addEventListener('beforeunload', () => {
     if (window.medAIApp && window.medAIApp.websocket) {
         window.medAIApp.websocket.close();
+    }
+});
+
+// Handle visibility change for performance
+document.addEventListener('visibilitychange', () => {
+    if (window.medAIApp) {
+        if (document.hidden) {
+            // Page is hidden, pause any non-essential operations
+            console.log('Page hidden - pausing non-essential operations');
+        } else {
+            // Page is visible, resume operations
+            console.log('Page visible - resuming operations');
+        }
     }
 });

@@ -3,15 +3,19 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="medAI MVP - Physiotherapeutische Sprach- und Dokumentationsplattform">
+    <meta name="theme-color" content="#667eea">
     <title>medAI MVP - Physiotherapeutische Dokumentation</title>
     <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 
 <body>
     <div class="container">
         <div class="header">
-            <h1> medAI MVP</h1>
+            <h1>Revolutionierung des Gesundheitswesens mit Med AI</h1>
             <p>Physiotherapeutische Sprach- und Dokumentationsplattform</p>
         </div>
 
@@ -23,19 +27,21 @@
                 <div class="form-group">
                     <label for="encounterId">Encounter ID:</label>
                     <input type="text" id="encounterId" class="form-control" placeholder="z.B. encounter_123"
-                        value="demo_encounter_001">
+                        value="demo_encounter_001" aria-describedby="encounterId-help">
+                    <small id="encounterId-help" class="form-help">Eindeutige Identifikation für diese Sitzung</small>
                 </div>
 
                 <div class="form-group">
                     <label for="taskType">Aufgabentyp:</label>
-                    <select id="taskType" class="form-control">
+                    <select id="taskType" class="form-control" aria-describedby="taskType-help">
                         <option value="intake_summary">Physiotherapeutische Aufnahme</option>
                         <!-- <option value="assessment">Physiotherapeutische Bewertung</option>
                         <option value="treatment_plan">Physiotherapeutischer Behandlungsplan</option> -->
                         <option value="treatment_report">Behandlungsbericht</option>
                     </select>
+                    <small id="taskType-help" class="form-help">Art der Dokumentation</small>
                 </div>
-<!-- 
+                <!-- 
                 <div class="form-group">
                     <label for="translateTo">Übersetzen nach:</label>
                     <select id="translateTo" class="form-control">
@@ -47,11 +53,11 @@
                 </div> -->
 
                 <div class="audio-controls">
-                    <button id="recordButton" class="record-button">
+                    <button id="recordButton" class="record-button" aria-label="Audioaufnahme starten oder stoppen">
                         <span id="recordText">Aufnahme starten</span>
                     </button>
 
-                    <div id="status" class="status ready">
+                    <div id="status" class="status ready" role="status" aria-live="polite">
                         Bereit für Aufnahme
                     </div>
 
@@ -59,7 +65,7 @@
                         <div id="progressFill" class="progress-fill"></div>
                     </div>
 
-                    <div class="controls">
+                    <div class="controls" style="display: none;">
                         <button id="startButton" class="btn btn-primary">Sitzung starten</button>
                         <button id="stopButton" class="btn btn-secondary" disabled>Stoppen</button>
                         <button id="clearButton" class="btn btn-secondary">Löschen</button>
@@ -118,6 +124,15 @@
                     <div id="reportTranscriptText" class="transcript-text">
                         Transkription wird hier angezeigt...
                     </div>
+                </div>
+
+                <div class="report-actions">
+                    <button id="reportSuggestButton" type="button" class="btn btn-secondary" disabled>Aus Transkript
+                        ausfüllen</button>
+                    <button id="reportSaveButton" type="button" class="btn btn-success" disabled
+                        style="display: none;">Speichern</button>
+                    <button id="reportDownloadButton" type="button" class="btn btn-primary" disabled>PDF
+                        herunterladen</button>
                 </div>
 
                 <form id="reportForm" class="report-form">
@@ -207,14 +222,6 @@
                             <textarea id="followUp" class="form-control report-textarea"></textarea>
                         </div>
                     </fieldset>
-
-                    <div class="report-actions">
-                        <button id="reportSuggestButton" type="button" class="btn btn-secondary" disabled>Aus Transkript
-                            ausfüllen</button>
-                        <button id="reportSaveButton" type="button" class="btn btn-success" disabled>Speichern</button>
-                        <button id="reportDownloadButton" type="button" class="btn btn-primary" disabled>PDF
-                            herunterladen</button>
-                    </div>
                 </form>
             </div>
         </div>
@@ -223,7 +230,7 @@
         <div id="messages"></div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/script.js" defer></script>
 </body>
 
 </html>
