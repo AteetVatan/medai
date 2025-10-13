@@ -198,7 +198,7 @@ class MedAIApp {
                 this.sendWebSocketMessage('start_session', {
                     encounter_id: this.encounterId,
                     task_type: this.taskTypeSelect.value,
-                    translate_to: this.translateToSelect.value || null
+                    translate_to: this.translateToSelect ? this.translateToSelect.value || null : null
                 });
                 resolve();
             };
